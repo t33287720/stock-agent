@@ -1,0 +1,28 @@
+.navbar {
+  background-color: #1f2937; /* 深灰 */
+  color: #ffffff;
+  padding: 12px 16px;
+  display: flex;
+  gap: 16px;
+}
+
+.navbar a {
+  padding: 6px 12px;
+  border-radius: 4px;
+  text-decoration: none;
+  color: inherit;
+  transition: background-color 0.2s;
+}
+
+.navbar a:hover {
+  background-color: #374151; /* hover 顏色 */
+}
+
+.navbar a.active {
+  background-color: #4b5563; /* 當前頁面 */
+}
+
+/* 主內容容器 */
+.main-container {
+  padding: 16px;
+}
