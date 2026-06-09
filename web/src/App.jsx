@@ -54,7 +54,7 @@ function NavBar() {
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/stock">
       <NavBar />
       <div className="main-container">
         <Routes>
