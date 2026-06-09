@@ -125,12 +125,14 @@ async def top100():
 
 @app.get("/api/stock/{ticker}")
 async def stock_analysis(ticker: str, days: int = 365):
-    df = get_stock_history(ticker, days)
+    # 並行抓 K 線和基本面，省去串行等待
+    df_task   = asyncio.to_thread(get_stock_history, ticker, days)
+    fund_task = asyncio.to_thread(get_fundamental, ticker)
+    df, fund  = await asyncio.gather(df_task, fund_task)
     if df.empty:
         raise HTTPException(404, f"找不到 {ticker} 的歷史資料")
     df = calculate_indicators(df)
     df = generate_signals(df)
-    fund = get_fundamental(ticker)
     return {
         "ticker":      ticker,
         "name":        fund.get("name", ticker),

@@ -271,7 +271,9 @@ def _yf_history(yf_ticker: str, days: int) -> pd.DataFrame:
 
 def get_fundamental(ticker: str) -> dict:
     """Fetch P/E, P/B, dividend yield from TWSE BWIBBU endpoint."""
-    cache_key = f"fund_{ticker}"
+    # 以週為 TTL：同一週內不重抓（基本面每週更新一次已足夠）
+    week_str  = datetime.today().strftime("%Y-W%W")
+    cache_key = f"fund_{ticker}_{week_str}"
     cached = _read_cache(cache_key)
     if cached:
         return cached
