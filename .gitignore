@@ -5,20 +5,27 @@ npm-debug.log*
 
 # Python
 __pycache__/
+**/__pycache__/
 *.py[cod]
 *.pyo
 .venv/
 venv/
 
+# Build output
+web/dist/
+**/dist/
+
 # Cache / data
 cache/
+**/cache/
 *.json.bak
 backend/all_stock_data.json
 backend/data/
+agent/data/
 
 # Secrets
 .env
-back/config/settings.json
+**/config/settings.json
 
 # OS / IDE
 .DS_Store

@@ -1,56 +1,94 @@
-version: '3.8'
-
 services:
+
+  # ── 前端 React + Nginx ─────────────────────────────────────────────────────────
   web:
-    build: ./front
+    build: ./web
     ports:
-      - "8080:80"
+      - "80:80"
     depends_on:
       - api
+      - agent
     restart: unless-stopped
 
+  # ── Python FastAPI 後端 ────────────────────────────────────────────────────────
   api:
-    build: ./back
+    build: ./api
     environment:
-      DB_HOST: db
-      DB_PORT: "5432"
-      DB_NAME: ${DB_NAME:-stockdb}
-      DB_USER: ${DB_USER:-stockuser}
+      DB_HOST:     db
+      DB_PORT:     "5432"
+      DB_NAME:     ${DB_NAME:-stockdb}
+      DB_USER:     ${DB_USER:-stockuser}
       DB_PASSWORD: ${DB_PASSWORD:-stock2025pw}
+    volumes:
+      - api_cache:/app/cache      # 股票快取（不進 image）
+      - api_config:/app/config    # settings.json（含 API key）
     depends_on:
       db:
         condition: service_healthy
     restart: unless-stopped
 
+  # ── Node.js Agent ──────────────────────────────────────────────────────────────
+  agent:
+    build: ./agent
+    environment:
+      MYSQL_HOST:     mariadb
+      MYSQL_USER:     ${MYSQL_USER:-root}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-changeme}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-stock}
+      DATA_ROOT:      /app/data
+    volumes:
+      - agent_data:/app/data      # 每日抓取的公開 API 資料
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── PostgreSQL（Python API 用）────────────────────────────────────────────────
   db:
     image: postgres:15-alpine
-    container_name: stock_db
-    labels:
-      pgadmin.register: "true"
-      pgadmin.name: "Stock DB"
-      pgadmin.group: "本機專案"
     environment:
-      POSTGRES_DB: ${DB_NAME:-stockdb}
-      POSTGRES_USER: ${DB_USER:-stockuser}
+      POSTGRES_DB:       ${DB_NAME:-stockdb}
+      POSTGRES_USER:     ${DB_USER:-stockuser}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-stock2025pw}
     volumes:
       - db_data:/var/lib/postgresql/data
-    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-stockuser}"]
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
+  # ── MariaDB（Node.js Agent 用）────────────────────────────────────────────────
+  mariadb:
+    image: mariadb:11-jammy
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MYSQL_PASSWORD:-changeme}
+      MARIADB_DATABASE:      ${MYSQL_DATABASE:-stock}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── DB 管理介面（Adminer 同時管 Postgres 和 MariaDB）──────────────────────────
   adminer:
     image: adminer:latest
     ports:
       - "8082:8080"
     depends_on:
       - db
+      - mariadb
     restart: unless-stopped
 
 volumes:
   db_data:
     external: true
     name: stock_postgres_data
+  mariadb_data:
+  api_cache:
+  api_config:
+  agent_data:
