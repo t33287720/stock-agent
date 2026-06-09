@@ -1,8 +1,0 @@
-**/node_modules
-**/__pycache__
-**/*.pyc
-**/*.pyo
-back/cache/**
-back/logs/**
-stock/cache/**
-stock/logs/**
