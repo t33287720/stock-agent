@@ -338,11 +338,25 @@ def auto_portfolio_summary() -> dict:
     price_errors = []
     today_str = datetime.today().strftime("%Y-%m-%d")
 
-    for ticker, pos in portfolio.get("positions", {}).items():
+    # 並行抓所有持倉的最新收盤價
+    def _fetch_price(item):
+        ticker, pos = item
         try:
             price, price_date = get_latest_close(ticker)
+            return ticker, price, price_date, None
         except ValueError as e:
-            price_errors.append({"ticker": ticker, "reason": str(e)})
+            return ticker, None, None, str(e)
+
+    positions_items = list(portfolio.get("positions", {}).items())
+    price_map: dict = {}
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        for ticker, price, price_date, err in ex.map(_fetch_price, positions_items):
+            price_map[ticker] = (price, price_date, err)
+
+    for ticker, pos in positions_items:
+        price, price_date, err = price_map[ticker]
+        if err:
+            price_errors.append({"ticker": ticker, "reason": err})
             positions_detail.append({
                 "ticker": ticker, "name": pos.get("name", ticker),
                 "shares": pos["shares"], "avg_cost": pos["avg_cost"],
