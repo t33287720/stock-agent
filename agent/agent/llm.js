@@ -120,7 +120,8 @@ ${DECISION_RULES}
 ${JSON.stringify(messages, null, 2)}
 `;
 
-  const res = await axios.post("http://localhost:11434/api/generate", {
+  const ollamaUrl = process.env.OLLAMA_URL || "http://host.docker.internal:11434";
+  const res = await axios.post(`${ollamaUrl}/api/generate`, {
     model: "mistral:7b",
     prompt,
     stream: false

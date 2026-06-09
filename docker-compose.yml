@@ -36,6 +36,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-changeme}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-stock}
       DATA_ROOT:      /app/data
+      OLLAMA_URL:     ${OLLAMA_URL:-http://host.docker.internal:11434}
     volumes:
       - agent_data:/app/data      # 每日抓取的公開 API 資料
     depends_on:
