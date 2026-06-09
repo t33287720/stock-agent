@@ -1,0 +1,30 @@
+# Node
+node_modules/
+**/node_modules/
+npm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
+# Cache / data
+cache/
+*.json.bak
+backend/all_stock_data.json
+backend/data/
+
+# Secrets
+.env
+back/config/settings.json
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Claude Code
+.claude/settings.local.json

@@ -118,20 +118,10 @@ ${JSON.stringify({
     try {
       parsed = JSON.parse(jsonStr);
       console.log("✅ 成功解析 JSON:", parsed);
-      break; // 成功就跳出
     } catch (e) {
       console.log(`❌ JSON解析失敗，LLM重新嘗試... (第 ${loop + 1} 次)`);
       loop++;
-    }
-
-    if (!parsed) {
-      throw new Error("LLM 最終無法回傳有效 JSON");
-    }
-
-    // 使用 parsed 前一定要檢查
-    if (!parsed.thought || !parsed.action || !parsed.final_answer) {
-      console.error("parsed JSON 欄位不完整:", parsed);
-      throw new Error("JSON 欄位不完整");
+      continue;
     }
 
     // 👉 Thought
@@ -186,5 +176,6 @@ if (parsed.final_answer) {
 }
   }
 
+  if (!parsed) throw new Error("LLM 最終無法回傳有效 JSON");
   return "超過最大重試次數，LLM未回傳正確 JSON";
 }

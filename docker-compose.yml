@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  web:
+    build: ./front
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  api:
+    build: ./back
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-stockdb}
+      DB_USER: ${DB_USER:-stockuser}
+      DB_PASSWORD: ${DB_PASSWORD:-stock2025pw}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    container_name: stock_db
+    labels:
+      pgadmin.register: "true"
+      pgadmin.name: "Stock DB"
+      pgadmin.group: "本機專案"
+    environment:
+      POSTGRES_DB: ${DB_NAME:-stockdb}
+      POSTGRES_USER: ${DB_USER:-stockuser}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-stock2025pw}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-stockuser}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  adminer:
+    image: adminer:latest
+    ports:
+      - "8082:8080"
+    depends_on:
+      - db
+    restart: unless-stopped
+
+volumes:
+  db_data:
+    external: true
+    name: stock_postgres_data

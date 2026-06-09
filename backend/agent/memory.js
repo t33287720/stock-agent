@@ -14,7 +14,7 @@ export function loadMemory() {
   }
 
   if (!fs.existsSync(memoryPath)) {
-    const initialMemory = { history: [], portfolio: [], recommendations: [] };
+    const initialMemory = { history: [], portfolio: [], recommendations: [], reflection: [] };
     fs.writeFileSync(memoryPath, JSON.stringify(initialMemory, null, 2));
     return initialMemory;
   }
@@ -23,6 +23,7 @@ export function loadMemory() {
   data.history = data.history || [];
   data.portfolio = data.portfolio || [];
   data.recommendations = data.recommendations || [];
+  data.reflection = data.reflection || [];
   return data;
 }
 

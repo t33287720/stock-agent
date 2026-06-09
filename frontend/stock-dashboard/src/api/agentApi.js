@@ -6,6 +6,31 @@ export const getTopStocks = async () => {
   return res.data.top;
 };
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export const askAgent = async (question) => {
   const res = await axios.post("http://localhost:3000/ask", { question });
   return res.data.result;
