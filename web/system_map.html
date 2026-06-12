@@ -179,7 +179,7 @@ body {
 
 <!-- ═══════════════════════════════════════════════
   第一排：主要流程
-  你 → 畫面 → 系統大腦 → 抓資料 → 算指標 → AI分析
+  你 → 畫面 → 系統大腦 → 抓資料 → 算指標
 ════════════════════════════════════════════════════ -->
 
 <!-- 1. 你 -->
@@ -205,7 +205,6 @@ body {
     <div class="tags">
       <span class="tag tag-i">技術分析</span>
       <span class="tag tag-i">基本面</span>
-      <span class="tag tag-i">AI 建議</span>
       <span class="tag tag-i">自動交易</span>
     </div>
   </div>
@@ -269,40 +268,19 @@ body {
   <div class="card-bottom">📈 共計算 15 種技術指標</div>
 </div>
 
-<!-- 6. AI 分析 -->
-<div class="card purple" id="c6" style="left:2160px;top:200px;width:280px"
-  data-tip="<b>AI 分析報告 (analyzer.py)</b><br>把所有技術指標和基本面數據，整理成提示詞交給 AI 大模型，由 AI 產生一份繁體中文投資建議報告。<br><br>支援三家 AI，在設定頁面可切換。">
-  <div class="step-badge">6</div>
-  <div class="card-top">
-    <div class="card-icon">🤖</div>
-    <div class="card-title">AI 幫你分析</div>
-    <div class="card-desc">把所有數據交給 AI 大模型，產生一份中文報告，說明建議進場價、出場目標、停損位和主要風險。</div>
-    <div class="tags">
-      <span class="tag tag-i">Claude（Anthropic）</span>
-      <span class="tag tag-i">Gemini（Google）</span>
-      <span class="tag tag-i">GPT（OpenAI）</span>
-    </div>
-  </div>
-  <div class="card-divider"></div>
-  <div class="card-bottom">📝 產出繁體中文 Markdown 報告</div>
-</div>
-
-
 <!-- ═══════════════════════════════════════════════
   第二排：輔助工具
 ════════════════════════════════════════════════════ -->
 
 <!-- 設定中心 -->
 <div class="card gray" id="c7" style="left:350px;top:590px;width:260px"
-  data-tip="<b>設定管理 (config.py)</b><br>儲存所有可以調整的設定，包括 AI 金鑰、交易策略參數等。<br><br>你在系統的「API 設定」頁面修改後，就會更新這裡。">
+  data-tip="<b>設定管理 (config.py)</b><br>儲存交易策略參數，例如停損停利百分比、RSI 門檻值、均線週期等。<br><br>你在系統的「策略參數」頁面修改後，就會更新這裡。">
   <div class="card-top">
     <div class="card-icon">⚙️</div>
     <div class="card-title">設定中心</div>
-    <div class="card-desc">儲存 AI 的 API 金鑰、停損停利百分比、RSI 門檻值等所有可調整的參數。</div>
+    <div class="card-desc">儲存停損停利百分比、RSI 門檻值、均線週期等交易策略參數。</div>
     <div class="tags">
-      <span class="tag tag-i">AI 金鑰</span>
       <span class="tag tag-i">策略參數</span>
-      <span class="tag tag-i">資料庫連線</span>
     </div>
   </div>
   <div class="card-divider"></div>
@@ -333,15 +311,14 @@ body {
   <div class="card-bottom">🕐 Asia/Taipei 時區</div>
 </div>
 
-<!-- 5大流程速覽 -->
+<!-- 4大流程速覽 -->
 <div class="card purple" id="c10" style="left:1400px;top:590px;width:340px"
-  data-tip="<b>你可以用這個系統做 5 件事</b><br>每件事背後走的資料流路徑都不同。">
+  data-tip="<b>你可以用這個系統做 4 件事</b><br>每件事背後走的資料流路徑都不同。">
   <div class="card-top">
     <div class="card-icon">🗺️</div>
-    <div class="card-title">你可以做的 5 件事</div>
+    <div class="card-title">你可以做的 4 件事</div>
     <div class="card-desc" style="opacity:1">
       <div style="margin-bottom:5px">📌 <b>查個股</b>：選股票 → 抓資料 → 算指標 → 看圖表</div>
-      <div style="margin-bottom:5px">📌 <b>看 AI 建議</b>：指標 + 基本面 → AI 產生中文報告</div>
       <div style="margin-bottom:5px">📌 <b>單股回測</b>：用歷史資料模擬這支股票賺賠</div>
       <div style="margin-bottom:5px">📌 <b>全組合回測</b>：同時模擬前 40 支股票整年度</div>
       <div>📌 <b>自動交易</b>：每天自動掃描 → 掛單 → 停損停利</div>
@@ -432,89 +409,11 @@ body {
 
 
 <!-- ═══════════════════════════════════════════════
-  第四排：AI Agent（新功能）
-════════════════════════════════════════════════════ -->
-
-<!-- Agent 主體 -->
-<div class="card" id="c-agent"
-  style="left:350px;top:1430px;width:620px;border-color:#7c3aed;background:#110d1e"
-  data-tip="<b>AI Agent 分析（新）</b><br>不只是叫 AI 生成報告，而是讓 AI <b>自主決定</b>要收集哪些資料，分析後評估自身信心，不足時繼續調查或修正。<br><br>這才是真正 Agentic 的用法：AI 是主角，不只是工具。">
-  <div class="card-top" style="background:linear-gradient(135deg,#1e1235 0%,#110d1e 100%)">
-    <div class="card-icon">🧠</div>
-    <div class="card-title" style="color:#c4b5fd">AI Agent — 自主分析引擎</div>
-    <div class="card-desc">
-      <b style="color:#a78bfa">這是系統真正「AI 是核心」的部分。</b>
-      AI 不只生成文字——它主動決定要查什麼資料、評估自己夠不夠確定、不確定就繼續調查。
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
-      <div style="background:#1a1035;border:1px solid #4c1d95;border-radius:8px;padding:10px">
-        <div style="font-size:11px;font-weight:700;color:#c4b5fd;margin-bottom:6px">🔄 Agent 循環（Claude 原生）</div>
-        <div style="font-size:11px;color:#8b949e;line-height:1.7">
-          1. Claude 決定呼叫哪個工具<br>
-          2. 工具執行 → 結果回傳給 Claude<br>
-          3. Claude 評估：「夠確定嗎？」<br>
-          4. 不夠 → 繼續呼叫更多工具<br>
-          5. 夠了 → 呼叫 submit_analysis
-        </div>
-      </div>
-      <div style="background:#1a1035;border:1px solid #4c1d95;border-radius:8px;padding:10px">
-        <div style="font-size:11px;font-weight:700;color:#c4b5fd;margin-bottom:6px">📋 Gemini/GPT 模擬循環</div>
-        <div style="font-size:11px;color:#8b949e;line-height:1.7">
-          Stage 1：基礎資料 → 初步評估<br>
-          Stage 2：依需求收集額外資料<br>
-          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ 修正評估<br>
-          Stage 3：提交最終結論<br>
-          &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;（含信心評分 0-100）
-        </div>
-      </div>
-    </div>
-    <div style="margin-top:10px">
-      <span class="tag tag-i" style="font-size:10px">📊 技術指標工具</span>
-      <span class="tag tag-i" style="font-size:10px">📋 基本面工具</span>
-      <span class="tag tag-i" style="font-size:10px">📉 回測驗證工具</span>
-      <span class="tag tag-i" style="font-size:10px">🔔 訊號歷史工具</span>
-      <span class="tag" style="background:#1a1035;color:#c4b5fd;border:1px solid #4c1d95;font-size:10px">✅ 提交結論工具</span>
-    </div>
-  </div>
-  <div class="card-divider"></div>
-  <div class="card-bottom">
-    📂 agent_tools.py（工具定義）· agent.py（循環引擎）· POST /api/agent/{代號}
-  </div>
-</div>
-
-<!-- Agent 和原有 AI 的差異說明 -->
-<div class="card gray" id="c-compare"
-  style="left:1010px;top:1430px;width:320px">
-  <div class="card-top">
-    <div class="card-icon">🆚</div>
-    <div class="card-title">舊 AI 報告 vs 新 Agent</div>
-    <div style="margin-top:8px;font-size:12px">
-      <div style="padding:8px;background:#0b1621;border-radius:6px;border:1px solid #1f6feb;margin-bottom:8px">
-        <div style="color:#58a6ff;font-weight:700;font-size:11px;margin-bottom:4px">📄 舊：AI 報告模式</div>
-        <div style="color:#8b949e;font-size:11px;line-height:1.6">
-          一次性：收集所有資料 → 丟給 AI → AI 說人話<br>
-          AI 是翻譯機，拿掉 AI 系統照常運作
-        </div>
-      </div>
-      <div style="padding:8px;background:#110d1e;border-radius:6px;border:1px solid #7c3aed">
-        <div style="color:#c4b5fd;font-weight:700;font-size:11px;margin-bottom:4px">🧠 新：Agent 模式</div>
-        <div style="color:#8b949e;font-size:11px;line-height:1.6">
-          迭代式：AI 自主選工具 → 評估信心 → 不夠就繼續<br>
-          AI 是決策者，拿掉 AI 這個功能就消失了
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="card-divider"></div>
-  <div class="card-bottom">最多 6 輪工具呼叫 · 顯示完整推理鏈</div>
-</div>
-
-<!-- ═══════════════════════════════════════════════
-  第五排：資料庫
+  第四排：資料庫
 ════════════════════════════════════════════════════ -->
 
 <!-- PostgreSQL -->
-<div class="card teal" id="c15" style="left:350px;top:1800px;width:900px"
+<div class="card teal" id="c15" style="left:350px;top:1430px;width:900px"
   data-tip="<b>PostgreSQL 資料庫 (stockdb)</b><br>永久保存所有自動交易的狀態。<br><br>即使系統重啟，所有持股和交易紀錄都不會消失。<br>連線：localhost:5432 · 帳號：stockuser">
   <div class="card-top">
     <div class="card-icon">🗄️</div>
@@ -595,12 +494,10 @@ const EDGES = [
   {a:'c2', b:'c3', col:'#3b82f6', lbl:'發送請求'},
   {a:'c3', b:'c4', col:'#22c55e', lbl:'去抓股價'},
   {a:'c4', b:'c5', col:'#22c55e', lbl:'K線資料'},
-  {a:'c5', b:'c6', col:'#a855f7', lbl:'指標數據'},
   // 系統大腦 連到各功能
   {a:'c3', b:'c11', col:'#f59e0b', lbl:'訊號分析'},
   {a:'c3', b:'c12', col:'#f59e0b', lbl:'自動交易'},
   {a:'c3', b:'c13', col:'#f59e0b', lbl:'回測模擬'},
-  {a:'c3', b:'c6',  col:'#a855f7', lbl:'AI 報告'},
   // 輔助
   {a:'c4', b:'c8', col:'#6b7280', lbl:'存入快取'},
   {a:'c7', b:'c3', col:'#6b7280', lbl:'讀取設定'},
@@ -609,22 +506,14 @@ const EDGES = [
   {a:'c12', b:'c15', col:'#0e7490', lbl:'存交易'},
   {a:'c14', b:'c12', col:'#ef4444', lbl:'定時觸發'},
   {a:'c11', b:'c12', col:'#f59e0b', lbl:'訊號傳遞'},
-  // Agent 連線
-  {a:'c3',       b:'c-agent', col:'#7c3aed', lbl:'Agent 分析'},
-  {a:'c4',       b:'c-agent', col:'#7c3aed', lbl:''},
-  {a:'c5',       b:'c-agent', col:'#7c3aed', lbl:''},
-  {a:'c-agent',  b:'c15',     col:'#0e7490', lbl:''},
-  {a:'c6',       b:'c-compare', col:'#484f58', lbl:''},
-  {a:'c-agent',  b:'c-compare', col:'#7c3aed', lbl:''},
 ];
 
 // ── 預設位置 ─────────────────────────────────────────────────────
 const DEFAULTS = {
-  c1: [350,200], c2:[660,200], c3:[1020,200], c4:[1400,200], c5:[1780,200], c6:[2160,200],
+  c1: [350,200], c2:[660,200], c3:[1020,200], c4:[1400,200], c5:[1780,200],
   c7: [350,590], c8:[700,590], c9:[1050,590], c10:[1400,590],
   c11:[350,990], c12:[750,990], c13:[1150,990], c14:[1550,990],
-  'c-agent':[350,1430], 'c-compare':[1010,1430],
-  c15:[350,1800],
+  c15:[350,1430],
 };
 
 // ── apply transform ───────────────────────────────────────────────

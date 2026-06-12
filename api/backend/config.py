@@ -4,17 +4,8 @@ from pathlib import Path
 CONFIG_PATH = Path(__file__).parent.parent / "config" / "settings.json"
 
 DEFAULT_CONFIG = {
-    "api_keys": {
-        "anthropic": "",
-        "openai": "",
-        "gemini": ""
-    },
     "settings": {
-        "max_stocks": 100,
-        "backtest_days": 365,
-        "cache_hours": 6,
-        "llm_provider": "gemini",
-        "llm_model": "gemini-2.0-flash"
+        "cache_hours": 6
     },
     "strategy": {
         "rsi_oversold": 30,
@@ -53,15 +44,3 @@ def save_config(config: dict) -> None:
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
-
-
-def get_api_key(provider: str) -> str:
-    return load_config().get("api_keys", {}).get(provider, "")
-
-
-def get_setting(key: str):
-    return load_config().get("settings", {}).get(key)
-
-
-def get_strategy(key: str):
-    return load_config().get("strategy", {}).get(key)

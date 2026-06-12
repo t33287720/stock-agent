@@ -21,7 +21,6 @@ cache/
 *.json.bak
 backend/all_stock_data.json
 backend/data/
-agent/data/
 
 # Secrets
 .env

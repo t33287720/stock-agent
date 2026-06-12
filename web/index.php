@@ -28,7 +28,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
         </svg>
-        API 設定
+        策略設定
       </button>
       <button class="nav-item" data-page="scan" onclick="showScanPage()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -141,57 +141,6 @@
 
     <!-- Settings page -->
     <div id="page-settings" style="display:none">
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">🔑 API 金鑰設定</div>
-          <span style="font-size:11px;color:var(--text-muted)">填入後點「儲存設定」</span>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Google Gemini API Key <span style="color:var(--success);font-size:11px">（免費）</span></label>
-            <input type="password" id="gemini-key" class="form-control" placeholder="AIza...">
-            <div style="font-size:11px;color:var(--text-muted);margin-top:4px">
-              取得免費 Key：<a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--primary)">aistudio.google.com/apikey</a>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>Anthropic API Key (Claude)</label>
-            <input type="password" id="anthropic-key" class="form-control" placeholder="sk-ant-...">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>OpenAI API Key (GPT)</label>
-            <input type="password" id="openai-key" class="form-control" placeholder="sk-...">
-          </div>
-          <div class="form-group" style="visibility:hidden"></div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>LLM 供應商</label>
-            <select id="llm-provider" class="form-control" onchange="updateModelPlaceholder(this.value)">
-              <option value="gemini">Google Gemini（免費）</option>
-              <option value="anthropic">Anthropic (Claude)</option>
-              <option value="openai">OpenAI (GPT)</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>模型名稱</label>
-            <input type="text" id="llm-model" class="form-control" placeholder="gemini-2.0-flash">
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-header"><div class="card-title">⚙️ 系統設定</div></div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>回測天數</label>
-            <input type="number" id="backtest-days" class="form-control" value="365">
-          </div>
-        </div>
-      </div>
-
       <div class="card">
         <div class="card-header"><div class="card-title">📊 策略參數</div></div>
         <div class="form-row">

@@ -157,7 +157,6 @@ function renderAnalysis(data) {
       <div class="tab" onclick="switchTab('fundamental')">📋 基本面</div>
       <div class="tab" onclick="switchTab('backtest')">🧪 回測</div>
       <div class="tab" onclick="switchTab('simulation')">💰 模擬交易</div>
-      <div class="tab" onclick="switchTab('ai')">🤖 AI Agent</div>
     </div>
 
     <div id="tab-chart">
@@ -193,9 +192,6 @@ function renderAnalysis(data) {
     </div>
     <div id="tab-simulation" style="display:none">
       <div id="sim-content"><div class="loading" style="padding:40px 0;color:var(--text-muted)">載入模擬交易狀態...</div></div>
-    </div>
-    <div id="tab-ai" style="display:none">
-      ${renderAIPlaceholder(ticker)}
     </div>
   `;
 
@@ -649,202 +645,12 @@ function toggleIndicator(type) {
   priceChart.update();
 }
 
-// ── AI Analysis ───────────────────────────────────────────────────────────────
-function renderAIPlaceholder(ticker) {
-  return `
-  <div class="card" style="margin-bottom:12px">
-    <div class="card-header">
-      <div>
-        <div class="card-title">🤖 AI Agent 分析</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:3px">
-          Agent 會自主決定需要哪些資料，分析後評估自身信心，不足時繼續調查
-        </div>
-      </div>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-primary" onclick="runAgent('${ticker}')">🤖 Agent 分析</button>
-      </div>
-    </div>
-    <div id="ai-result">
-      <div style="padding:32px 16px;color:var(--text-muted);text-align:center;font-size:13px">
-        <div style="font-size:28px;margin-bottom:12px">🔍</div>
-        <div style="font-weight:600;margin-bottom:6px">AI Agent 分析模式</div>
-        <div style="max-width:480px;margin:0 auto;line-height:1.7">
-          Agent 會自主決定要收集哪些資料（技術指標、基本面、回測）。<br>
-          每一步驟都會顯示 AI 的推理過程，最終給出帶信心評分的判斷。
-        </div>
-      </div>
-    </div>
-  </div>`;
-}
-
-// ── Agent analysis ────────────────────────────────────────────────────────────
-async function runAgent(ticker) {
-  const el = document.getElementById('ai-result');
-  el.innerHTML = `
-    <div style="padding:24px 16px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
-        <div class="spinner"></div>
-        <div>
-          <div style="font-weight:600">Agent 正在分析中...</div>
-          <div style="font-size:11px;color:var(--text-muted);margin-top:2px">
-            AI 正在決定要收集哪些資料，大約需要 20–60 秒
-          </div>
-        </div>
-      </div>
-      <div id="agent-steps-live" style="border-left:2px solid var(--border);padding-left:16px;color:var(--text-muted);font-size:12px">
-        等待 Agent 回應...
-      </div>
-    </div>`;
-
-  try {
-    const r = await fetch(`${API}/api/agent/${ticker}`, { method: 'POST' });
-    if (!r.ok) throw new Error(await r.text());
-    const data = await r.json();
-    renderAgentResult(data);
-  } catch (e) {
-    el.innerHTML = `<div style="padding:20px;color:var(--danger)">Agent 分析失敗：${e.message}</div>`;
-  }
-}
-
-function renderAgentResult(d) {
-  const el = document.getElementById('ai-result');
-
-  const VERDICT_STYLE = {
-    '強烈看多': { bg: '#0d2a0d', border: '#22863a', color: '#3fb950', icon: '🚀' },
-    '看多':     { bg: '#0d1f0d', border: '#238636', color: '#3fb950', icon: '📈' },
-    '中性觀望': { bg: '#1a1600', border: '#d29922', color: '#e3b341', icon: '⚖️' },
-    '看空':     { bg: '#1f0d0d', border: '#b91c1c', color: '#f85149', icon: '📉' },
-    '強烈看空': { bg: '#2a0a0a', border: '#b91c1c', color: '#f85149', icon: '🔻' },
-  };
-  const vs   = VERDICT_STYLE[d.verdict] || VERDICT_STYLE['中性觀望'];
-  const conf = d.confidence || 0;
-  const confColor = conf >= 75 ? '#3fb950' : conf >= 55 ? '#e3b341' : '#f85149';
-  const confLabel = conf >= 75 ? '高信心' : conf >= 55 ? '中信心' : '低信心，謹慎參考';
-
-  // Reasoning chain
-  const stepsHtml = (d.steps || []).map((s, i) => {
-    const isSelf = s.tool === 'self_evaluate';
-    const isFinal = s.tool === 'submit_analysis';
-    const dotColor = isFinal ? '#3fb950' : isSelf ? '#a371f7' : '#58a6ff';
-    return `
-      <div style="display:flex;gap:12px;margin-bottom:14px">
-        <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center">
-          <div style="width:22px;height:22px;border-radius:50%;background:${dotColor}22;
-               border:1.5px solid ${dotColor};display:flex;align-items:center;
-               justify-content:center;font-size:10px;font-weight:700;color:${dotColor}">
-            ${i + 1}
-          </div>
-          ${i < (d.steps.length - 1) ? `<div style="width:1.5px;flex:1;background:var(--border);margin:3px 0"></div>` : ''}
-        </div>
-        <div style="flex:1;padding-bottom:4px">
-          <div style="font-size:12px;font-weight:600;color:${dotColor};margin-bottom:3px">
-            ${s.tool_label || s.tool}
-          </div>
-          <div style="font-size:12px;color:var(--text-secondary);background:var(--surface2);
-               border-radius:6px;padding:6px 10px;line-height:1.6">
-            ${s.output_summary || '—'}
-          </div>
-          ${s.thought ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;
-               padding-left:4px;border-left:2px solid var(--border);line-height:1.6">
-            💭 ${s.thought.substring(0, 200)}${s.thought.length > 200 ? '...' : ''}
-          </div>` : ''}
-        </div>
-      </div>`;
-  }).join('');
-
-  // Reasons and risks
-  const reasonsHtml = (d.key_reasons || []).map(r =>
-    `<div style="display:flex;gap:8px;margin-bottom:5px;font-size:12px">
-      <span style="color:#3fb950;flex-shrink:0">✓</span><span>${r}</span>
-    </div>`).join('');
-  const risksHtml = (d.risks || []).map(r =>
-    `<div style="display:flex;gap:8px;margin-bottom:5px;font-size:12px">
-      <span style="color:#e3b341;flex-shrink:0">⚠</span><span>${r}</span>
-    </div>`).join('');
-
-  el.innerHTML = `
-    <!-- 最終判斷卡片 -->
-    <div style="border:1.5px solid ${vs.border};background:${vs.bg};
-         border-radius:10px;padding:18px 20px;margin-bottom:16px">
-      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-        <div style="font-size:36px">${vs.icon}</div>
-        <div style="flex:1">
-          <div style="font-size:20px;font-weight:700;color:${vs.color}">${d.verdict}</div>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:3px">
-            ${d.name || d.ticker} · ${d.provider || ''} · ${d.iterations || 0} 次工具呼叫
-          </div>
-        </div>
-        <!-- 信心度量表 -->
-        <div style="text-align:center;min-width:80px">
-          <div style="font-size:26px;font-weight:700;color:${confColor}">${conf}%</div>
-          <div style="font-size:10px;color:${confColor}">${confLabel}</div>
-          <div style="height:5px;background:var(--surface2);border-radius:3px;margin-top:5px;width:80px">
-            <div style="height:100%;width:${conf}%;background:${confColor};
-                 border-radius:3px;transition:width .5s"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
-      <div style="background:var(--surface2);border-radius:8px;padding:12px;text-align:center">
-        <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px">建議進場</div>
-        <div style="font-size:14px;font-weight:700;color:var(--primary)">${d.entry_price_range || 'N/A'}</div>
-      </div>
-      <div style="background:var(--surface2);border-radius:8px;padding:12px;text-align:center">
-        <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px">目標價</div>
-        <div style="font-size:14px;font-weight:700;color:#3fb950">${d.target_price || 'N/A'}</div>
-      </div>
-      <div style="background:var(--surface2);border-radius:8px;padding:12px;text-align:center">
-        <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px">停損價</div>
-        <div style="font-size:14px;font-weight:700;color:#f85149">${d.stop_loss || 'N/A'}</div>
-      </div>
-    </div>
-
-    <!-- 推理鏈 -->
-    <div style="background:var(--surface);border:1px solid var(--border);
-         border-radius:10px;padding:16px;margin-bottom:16px">
-      <div style="font-size:13px;font-weight:600;margin-bottom:14px;color:var(--text-secondary)">
-        🔗 Agent 推理過程
-      </div>
-      ${stepsHtml}
-    </div>
-
-    <!-- 關鍵理由 + 風險 -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
-      <div style="background:var(--surface2);border-radius:8px;padding:14px">
-        <div style="font-size:12px;font-weight:700;color:#3fb950;margin-bottom:8px">✓ 支持判斷的理由</div>
-        ${reasonsHtml || '<div style="font-size:12px;color:var(--text-muted)">無</div>'}
-      </div>
-      <div style="background:var(--surface2);border-radius:8px;padding:14px">
-        <div style="font-size:12px;font-weight:700;color:#e3b341;margin-bottom:8px">⚠ 需注意的風險</div>
-        ${risksHtml || '<div style="font-size:12px;color:var(--text-muted)">無</div>'}
-      </div>
-    </div>
-
-    <!-- 完整摘要 -->
-    ${d.summary ? `
-    <div style="background:var(--surface2);border-radius:8px;padding:14px;font-size:12px;
-         line-height:1.8;color:var(--text-secondary)">
-      <div style="font-weight:600;margin-bottom:6px;color:var(--text-primary)">📝 分析摘要</div>
-      ${d.summary}
-    </div>` : ''}
-
-    <div style="font-size:10px;color:var(--text-muted);margin-top:12px;text-align:center">
-      ⚠ 本分析由 AI 自動生成，僅供學術研究參考，不構成投資建議。投資有風險，入市需謹慎。
-    </div>`;
-}
-
 // ── Settings ──────────────────────────────────────────────────────────────────
 async function showSettings() {
   showPage('settings');
   try {
     const r = await fetch(`${API}/api/config`);
     const cfg = await r.json();
-    const provider = cfg.settings.llm_provider || 'gemini';
-    document.getElementById('llm-provider').value = provider;
-    document.getElementById('llm-model').value = cfg.settings.llm_model || '';
-    document.getElementById('backtest-days').value = cfg.settings.backtest_days || 365;
     document.getElementById('initial-capital').value = cfg.strategy.initial_capital || 100000;
     document.getElementById('max-per-trade').value = cfg.strategy.max_per_trade ?? 0;
     document.getElementById('stop-loss').value = cfg.strategy.stop_loss_pct || 7;
@@ -853,30 +659,13 @@ async function showSettings() {
     document.getElementById('rsi-overbought').value = cfg.strategy.rsi_overbought || 70;
     document.getElementById('ma-short').value = cfg.strategy.ma_short || 20;
     document.getElementById('ma-long').value = cfg.strategy.ma_long || 60;
-    updateModelPlaceholder(provider);
   } catch (e) {
     showToast('無法連線後端', 'error');
   }
 }
 
-function updateModelPlaceholder(provider) {
-  const models = { gemini: 'gemini-2.5-flash', anthropic: 'claude-opus-4-7', openai: 'gpt-4o' };
-  const input = document.getElementById('llm-model');
-  input.placeholder = models[provider] || '';
-}
-
 async function saveSettings() {
   const body = {
-    api_keys: {
-      gemini:    document.getElementById('gemini-key').value.trim(),
-      anthropic: document.getElementById('anthropic-key').value.trim(),
-      openai:    document.getElementById('openai-key').value.trim(),
-    },
-    settings: {
-      llm_provider: document.getElementById('llm-provider').value,
-      llm_model:    document.getElementById('llm-model').value,
-      backtest_days: parseInt(document.getElementById('backtest-days').value),
-    },
     strategy: {
       initial_capital:  parseFloat(document.getElementById('initial-capital').value),
       max_per_trade:    parseFloat(document.getElementById('max-per-trade').value) || 0,
@@ -1073,19 +862,6 @@ function renderFBChart(history) {
 }
 
 // ── 今日訊號掃描 ──────────────────────────────────────────────────────────────
-const AGENT_CACHE_KEY = 'scanAgentResults_v1';
-
-function _agentCache() {
-  try { return JSON.parse(localStorage.getItem(AGENT_CACHE_KEY) || '{}'); }
-  catch { return {}; }
-}
-function _saveAgentCache(ticker, result) {
-  const c = _agentCache();
-  c[ticker] = { ...result, _saved_at: new Date().toLocaleString('zh-TW') };
-  localStorage.setItem(AGENT_CACHE_KEY, JSON.stringify(c));
-}
-function _loadAgentCache(ticker) { return _agentCache()[ticker] || null; }
-
 async function showScanPage() {
   showPage('scan');
   const el = document.getElementById('scan-content');
@@ -1104,7 +880,6 @@ async function showScanPage() {
           <option value="150" selected>掃描 150 支</option>
         </select>
         <button class="btn btn-primary" onclick="runScan()">🔍 重新掃描</button>
-        <button class="btn btn-outline" style="font-size:11px" onclick="clearAllAgentCache()">🗑 清除 Agent 快取</button>
       </div>
     </div>
     <div id="scan-result">
@@ -1153,13 +928,6 @@ async function runScan() {
   } catch (e) {
     el.innerHTML = `<div style="padding:20px;color:var(--danger)">掃描失敗：${e.message}</div>`;
   }
-}
-
-function clearAllAgentCache() {
-  localStorage.removeItem(AGENT_CACHE_KEY);
-  showToast('已清除所有 Agent 快取', 'success');
-  // 重新渲染當前結果（移除已展開的 agent 列）
-  document.querySelectorAll('[id^="agent-row-"]').forEach(r => r.remove());
 }
 
 function renderScanResult(data, fromCache) {
@@ -1229,12 +997,6 @@ function renderScanResult(data, fromCache) {
             '#1a0808','#b91c1c','#f85149') +
     (errors.length ? `<div style="font-size:11px;color:var(--text-muted);margin-top:8px">
       ⚠ ${errors.length} 筆異常：${errors.join('；')}</div>` : '');
-
-  // 還原已有的 Agent 快取結果（無縫銜接）
-  [...buys, ...sells].forEach(s => {
-    const cached = _loadAgentCache(s.ticker);
-    if (cached) _injectAgentRow(s.ticker, cached, true);
-  });
 }
 
 function scanRow(s, type) {
@@ -1248,13 +1010,6 @@ function scanRow(s, type) {
   const todayBadge = !s.is_today
     ? `<span style="color:var(--text-muted);margin-left:4px">⚠非今日</span>` : '';
   const reason = (s.signal_reason || '').replace('買入：','').replace('賣出：','');
-
-  // Agent 按鈕顯示是否有快取
-  const cached = _loadAgentCache(s.ticker);
-  const agentBtnLabel = cached ? '🤖 Agent ✓' : '🤖 Agent';
-  const agentBtnStyle = cached
-    ? 'background:#1e1235;border-color:#6e40c9;color:#b392f0'
-    : '';
 
   return `
     <tr id="stock-row-${s.ticker}" style="border-bottom:1px solid var(--border)"
@@ -1274,171 +1029,8 @@ function scanRow(s, type) {
       <td style="padding:8px;text-align:center;white-space:nowrap">
         <button class="btn btn-outline" style="font-size:11px;padding:3px 8px;margin-right:4px"
           onclick="loadStock('${s.ticker}')">圖表</button>
-        <button id="agent-btn-${s.ticker}" class="btn btn-primary"
-          style="font-size:11px;padding:3px 8px;${agentBtnStyle}"
-          onclick="runAgentInline('${s.ticker}')">
-          ${agentBtnLabel}
-        </button>
       </td>
     </tr>`;
-}
-
-// 在掃描列下方展開 Agent 分析（inline，不跳頁）
-async function runAgentInline(ticker) {
-  const btn = document.getElementById(`agent-btn-${ticker}`);
-  if (btn) { btn.disabled = true; btn.textContent = '分析中...'; }
-
-  // 先顯示 loading 列
-  _injectAgentRow(ticker, null, false);
-
-  try {
-    const r = await fetch(`${API}/api/agent/${ticker}`, { method: 'POST' });
-    if (!r.ok) throw new Error(await r.text());
-    const data = await r.json();
-
-    _saveAgentCache(ticker, data);        // 存 localStorage
-    _injectAgentRow(ticker, data, false); // 顯示結果
-
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = '🤖 Agent ✓';
-      btn.style.cssText += 'background:#1e1235;border-color:#6e40c9;color:#b392f0';
-    }
-  } catch (e) {
-    const row = document.getElementById(`agent-row-${ticker}`);
-    if (row) row.innerHTML = `<td colspan="8" style="padding:12px 20px;color:var(--danger)">
-      Agent 失敗：${e.message}
-      <button class="btn btn-outline" style="margin-left:8px;font-size:11px"
-        onclick="runAgentInline('${ticker}')">重試</button></td>`;
-    if (btn) { btn.disabled = false; btn.textContent = '🤖 Agent'; }
-  }
-}
-
-// 插入 / 更新展開列
-function _injectAgentRow(ticker, data, isRestore) {
-  // 找所在 table（buy 或 sell）
-  const stockRow = document.getElementById(`stock-row-${ticker}`);
-  if (!stockRow) return;
-
-  let agentRow = document.getElementById(`agent-row-${ticker}`);
-  if (!agentRow) {
-    agentRow = document.createElement('tr');
-    agentRow.id = `agent-row-${ticker}`;
-    stockRow.parentNode.insertBefore(agentRow, stockRow.nextSibling);
-  }
-
-  if (!data) {
-    // Loading 狀態
-    agentRow.innerHTML = `<td colspan="8" style="padding:14px 20px;background:#110d1e;
-      border-bottom:2px solid #6e40c9">
-      <div style="display:flex;align-items:center;gap:10px">
-        <div class="spinner"></div>
-        <span style="font-size:12px;color:#b392f0">AI Agent 分析中，約需 20–60 秒...</span>
-      </div></td>`;
-    return;
-  }
-
-  // 結果顯示
-  const VSTYLE = {
-    '強烈看多': ['#0d2a0d','#22863a','#3fb950','🚀'],
-    '看多':     ['#0d1f0d','#238636','#3fb950','📈'],
-    '中性觀望': ['#1a1600','#d29922','#e3b341','⚖️'],
-    '看空':     ['#1f0d0d','#b91c1c','#f85149','📉'],
-    '強烈看空': ['#2a0a0a','#b91c1c','#f85149','🔻'],
-  };
-  const [vBg, vBorder, vColor, vIcon] = VSTYLE[data.verdict] || VSTYLE['中性觀望'];
-  const conf = data.confidence || 0;
-  const confColor = conf >= 75 ? '#3fb950' : conf >= 55 ? '#e3b341' : '#f85149';
-
-  // 推理鏈（折疊，預設展開）
-  const stepsHtml = (data.steps || []).map((s, i) => {
-    const dotColor = s.tool === 'submit_analysis' ? '#3fb950'
-                   : s.tool === 'self_evaluate'    ? '#a371f7' : '#58a6ff';
-    return `<div style="display:flex;gap:8px;margin-bottom:8px;font-size:11px">
-      <div style="width:18px;height:18px;border-radius:50%;background:${dotColor}22;
-           border:1.5px solid ${dotColor};display:flex;align-items:center;justify-content:center;
-           font-size:9px;font-weight:700;color:${dotColor};flex-shrink:0">${i+1}</div>
-      <div>
-        <div style="font-weight:600;color:${dotColor}">${s.tool_label || s.tool}</div>
-        <div style="color:var(--text-muted)">${s.output_summary || '—'}</div>
-        ${s.thought ? `<div style="color:var(--text-muted);border-left:2px solid var(--border);
-          padding-left:6px;margin-top:2px">💭 ${s.thought.substring(0,150)}${s.thought.length>150?'...':''}</div>` : ''}
-      </div></div>`;
-  }).join('');
-
-  const reasonsHtml = (data.key_reasons || []).map(r =>
-    `<div style="display:flex;gap:6px;font-size:11px;margin-bottom:3px">
-      <span style="color:#3fb950;flex-shrink:0">✓</span><span>${r}</span></div>`).join('');
-  const risksHtml = (data.risks || []).map(r =>
-    `<div style="display:flex;gap:6px;font-size:11px;margin-bottom:3px">
-      <span style="color:#e3b341;flex-shrink:0">⚠</span><span>${r}</span></div>`).join('');
-
-  const savedAt = data._saved_at ? `<span style="color:var(--text-muted);font-size:10px">儲存於 ${data._saved_at}</span>` : '';
-
-  agentRow.innerHTML = `
-    <td colspan="8" style="padding:0;background:#0d0d14;border-bottom:2px solid ${vBorder}">
-      <div style="padding:14px 18px">
-        <!-- 標題列 -->
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
-          <div style="background:${vBg};border:1px solid ${vBorder};border-radius:8px;
-               padding:8px 14px;display:flex;align-items:center;gap:10px;flex:1;min-width:200px">
-            <span style="font-size:22px">${vIcon}</span>
-            <div>
-              <div style="font-weight:700;color:${vColor};font-size:14px">${data.verdict}</div>
-              <div style="font-size:10px;color:var(--text-muted)">${data.ticker} · ${data.provider||''} · ${data.iterations||0}次工具呼叫</div>
-            </div>
-            <div style="margin-left:auto;text-align:center">
-              <div style="font-size:20px;font-weight:700;color:${confColor}">${conf}%</div>
-              <div style="height:4px;width:60px;background:var(--surface2);border-radius:2px;margin-top:3px">
-                <div style="height:100%;width:${conf}%;background:${confColor};border-radius:2px"></div>
-              </div>
-            </div>
-          </div>
-          <!-- 進場/目標/停損 -->
-          <div style="display:flex;gap:8px">
-            <div style="background:var(--surface2);border-radius:6px;padding:6px 12px;text-align:center;min-width:70px">
-              <div style="font-size:9px;color:var(--text-muted)">進場</div>
-              <div style="font-size:12px;font-weight:700;color:var(--primary)">${data.entry_price_range||'N/A'}</div>
-            </div>
-            <div style="background:var(--surface2);border-radius:6px;padding:6px 12px;text-align:center;min-width:70px">
-              <div style="font-size:9px;color:var(--text-muted)">目標</div>
-              <div style="font-size:12px;font-weight:700;color:#3fb950">${data.target_price||'N/A'}</div>
-            </div>
-            <div style="background:var(--surface2);border-radius:6px;padding:6px 12px;text-align:center;min-width:70px">
-              <div style="font-size:9px;color:var(--text-muted)">停損</div>
-              <div style="font-size:12px;font-weight:700;color:#f85149">${data.stop_loss||'N/A'}</div>
-            </div>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-            ${savedAt}
-            <button class="btn btn-outline" style="font-size:10px;padding:2px 8px"
-              onclick="runAgentInline('${ticker}')">🔄 重新分析</button>
-          </div>
-        </div>
-
-        <!-- 推理鏈 + 理由風險 側排 -->
-        <div style="display:grid;grid-template-columns:1fr 200px;gap:12px">
-          <div>
-            <details open>
-              <summary style="font-size:11px;font-weight:600;color:var(--text-secondary);
-                cursor:pointer;margin-bottom:8px;list-style:none">
-                🔗 推理過程（點擊折疊）
-              </summary>
-              <div style="padding-left:4px">${stepsHtml}</div>
-            </details>
-            ${data.summary ? `<div style="margin-top:10px;font-size:11px;color:var(--text-secondary);
-              line-height:1.7;background:var(--surface2);border-radius:6px;padding:10px">
-              ${data.summary}</div>` : ''}
-          </div>
-          <div>
-            <div style="font-size:11px;font-weight:600;color:#3fb950;margin-bottom:6px">✓ 支持理由</div>
-            ${reasonsHtml || '<div style="font-size:11px;color:var(--text-muted)">—</div>'}
-            <div style="font-size:11px;font-weight:600;color:#e3b341;margin:10px 0 6px">⚠ 風險</div>
-            ${risksHtml || '<div style="font-size:11px;color:var(--text-muted)">—</div>'}
-          </div>
-        </div>
-      </div>
-    </td>`;
 }
 
 // ── Auto Trading ──────────────────────────────────────────────────────────────
@@ -1495,10 +1087,15 @@ function renderAutoInit() {
     </div>`;
 }
 
+const ORDERS_PAGE_SIZE = 20;
+let autoOrdersData = [];
+let autoOrdersPage = 1;
+
 function renderAutoDashboard(portfolio, orders, history) {
   const pnlCls  = portfolio.total_pnl >= 0 ? 'positive' : 'negative';
   const positions = portfolio.positions || [];
   const filled    = orders.filled || [];
+  autoOrdersData  = filled;
 
   return `
     <!-- Top action bar -->
@@ -1586,31 +1183,80 @@ function renderAutoDashboard(portfolio, orders, history) {
         <div class="card-title">📋 成交紀錄</div>
         <span style="font-size:12px;color:var(--text-muted)">${filled.length} 筆</span>
       </div>
-      ${filled.length ? `
-        <table class="bt-table">
-          <thead><tr>
-            <th>日期</th><th>代號</th><th>動作</th><th>股數</th><th>成交價</th>
-            <th>金額</th><th>手續費</th><th>損益</th><th>原因</th>
-          </tr></thead>
-          <tbody>
-            ${filled.slice().reverse().slice(0,50).map(t => `<tr>
-              <td>${t.date}</td>
-              <td><strong>${t.ticker}</strong></td>
-              <td><span class="badge badge-${t.action==='buy'?'buy':'sell'}">${t.action==='buy'?'買入':'賣出'}</span></td>
-              <td>${t.shares}</td>
-              <td>NT$ ${t.price?.toFixed(2)}</td>
-              <td>NT$ ${t.amount?.toLocaleString()}</td>
-              <td style="color:var(--danger)">NT$ ${t.fee?.toFixed(0)}</td>
-              <td class="${(t.pnl||0)>=0?'positive':'negative'}">
-                ${t.pnl != null ? (t.pnl>=0?'+':'')+t.pnl.toLocaleString()+'元<br>'+(t.pnl_pct?.toFixed(2))+'%' : '—'}
-              </td>
-              <td style="font-size:11px;color:var(--text-muted)">${t.reason || '—'}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>` :
-        `<p style="color:var(--text-muted);padding:20px 0">尚無成交紀錄。</p>`}
+      <div id="orders-table-wrap">${renderOrdersTable()}</div>
     </div>
   `;
+}
+
+function renderOrdersTable() {
+  const filled = autoOrdersData;
+  if (!filled.length) {
+    return `<p style="color:var(--text-muted);padding:20px 0">尚無成交紀錄。</p>`;
+  }
+
+  const totalPages = Math.max(1, Math.ceil(filled.length / ORDERS_PAGE_SIZE));
+  autoOrdersPage = Math.min(Math.max(1, autoOrdersPage), totalPages);
+  const start = (autoOrdersPage - 1) * ORDERS_PAGE_SIZE;
+  const pageItems = filled.slice(start, start + ORDERS_PAGE_SIZE);
+
+  return `
+    <table class="bt-table">
+      <thead><tr>
+        <th>日期</th><th>代號</th><th>動作</th><th>股數</th><th>成交價</th>
+        <th>金額</th><th>手續費</th><th>損益</th><th>原因</th>
+      </tr></thead>
+      <tbody>
+        ${pageItems.map(t => `<tr>
+          <td>${t.date}</td>
+          <td><strong>${t.ticker}</strong></td>
+          <td><span class="badge badge-${t.action==='buy'?'buy':'sell'}">${t.action==='buy'?'買入':'賣出'}</span></td>
+          <td>${t.shares}</td>
+          <td>NT$ ${t.price?.toFixed(2)}</td>
+          <td>NT$ ${t.amount?.toLocaleString()}</td>
+          <td style="color:var(--danger)">NT$ ${t.fee?.toFixed(0)}</td>
+          <td class="${(t.pnl||0)>=0?'positive':'negative'}">
+            ${t.pnl != null ? (t.pnl>=0?'+':'')+t.pnl.toLocaleString()+'元<br>'+(t.pnl_pct?.toFixed(2))+'%' : '—'}
+          </td>
+          <td style="font-size:11px;color:var(--text-muted)">${t.reason || '—'}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    ${renderOrdersPager(totalPages)}
+  `;
+}
+
+function renderOrdersPager(totalPages) {
+  if (totalPages <= 1) return '';
+  const cur = autoOrdersPage;
+  const pages = [];
+  if (totalPages <= 7) {
+    for (let p = 1; p <= totalPages; p++) pages.push(p);
+  } else {
+    pages.push(1);
+    if (cur > 3) pages.push('…');
+    for (let p = Math.max(2, cur - 1); p <= Math.min(totalPages - 1, cur + 1); p++) pages.push(p);
+    if (cur < totalPages - 2) pages.push('…');
+    pages.push(totalPages);
+  }
+
+  const btn = (label, page, disabled, active) => `
+    <button class="btn btn-outline" style="font-size:12px;padding:4px 10px;${active ? 'border-color:var(--primary);color:var(--primary)' : ''}"
+      ${disabled ? 'disabled' : `onclick="changeOrdersPage(${page})"`}>${label}</button>`;
+
+  return `
+    <div style="display:flex;justify-content:center;align-items:center;gap:6px;margin-top:12px;flex-wrap:wrap">
+      ${btn('‹ 上一頁', cur - 1, cur <= 1, false)}
+      ${pages.map(p => p === '…'
+        ? `<span style="padding:4px 6px;color:var(--text-muted)">…</span>`
+        : btn(p, p, false, p === cur)
+      ).join('')}
+      ${btn('下一頁 ›', cur + 1, cur >= totalPages, false)}
+    </div>`;
+}
+
+function changeOrdersPage(page) {
+  autoOrdersPage = page;
+  document.getElementById('orders-table-wrap').innerHTML = renderOrdersTable();
 }
 
 async function autoInit() {
@@ -1717,7 +1363,7 @@ function showPage(page) {
 
 
 function switchTab(tab) {
-  const all = ['chart', 'signals', 'fundamental', 'backtest', 'simulation', 'ai'];
+  const all = ['chart', 'signals', 'fundamental', 'backtest', 'simulation'];
   all.forEach(t => {
     const el = document.getElementById(`tab-${t}`);
     if (el) el.style.display = t === tab ? '' : 'none';

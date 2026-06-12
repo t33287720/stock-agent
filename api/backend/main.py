@@ -44,7 +44,6 @@ if static_path.exists():
 # ── Request models ──────────────────────────────────────────────────────────────
 
 class ConfigUpdate(BaseModel):
-    api_keys: dict | None = None
     settings: dict | None = None
     strategy: dict | None = None
 
@@ -240,53 +239,23 @@ async def scan_today_signals(max_candidates: int = 150):
     return result
 
 
-# ── AI Agent（佔位符，保留 UI 接口）────────────────────────────────────────────────
-
-@app.post("/api/agent/{ticker}")
-async def agent_analyze(ticker: str):
-    return {
-        "ticker":     ticker,
-        "verdict":    "中性觀望",
-        "confidence": 0,
-        "steps":      [],
-        "key_reasons": ["AI Agent 功能建置中"],
-        "risks":      [],
-        "summary":    "AI Agent 分析功能尚未啟用，請使用技術面指標與訊號作為參考。",
-        "provider":   "—",
-        "iterations": 0,
-    }
-
-
 # ── 設定 ─────────────────────────────────────────────────────────────────────────
 
 @app.get("/api/config")
 async def get_config():
     cfg = load_config()
-    masked = {k: ("*" * (len(v) - 4) + v[-4:]) if len(v) > 4 else "*" * len(v)
-              for k, v in cfg.get("api_keys", {}).items()}
     return {
-        "api_keys_masked": masked,
-        "settings":        cfg.get("settings", {}),
-        "strategy":        cfg.get("strategy", {}),
+        "settings": cfg.get("settings", {}),
+        "strategy": cfg.get("strategy", {}),
     }
 
 
 @app.put("/api/config")
 async def update_config(update: ConfigUpdate):
     cfg = load_config()
-    if update.api_keys:
-        for k, v in update.api_keys.items():
-            if v:
-                cfg["api_keys"][k] = v
     if update.settings:
         cfg["settings"].update(update.settings)
     if update.strategy:
         cfg["strategy"].update(update.strategy)
     save_config(cfg)
     return {"status": "ok", "message": "設定已儲存"}
-
-
-@app.get("/api/health")
-async def health():
-    cfg = load_config()
-    return {"status": "ok", "llm_provider": cfg["settings"].get("llm_provider")}
