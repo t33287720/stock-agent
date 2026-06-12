@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from backend.config import load_config, save_config
 from backend.data.fetcher import get_fundamental, get_stock_history, get_top100_stocks
+from backend.data.news import get_stock_news
 from backend.analysis.technical import calculate_indicators, get_indicator_summary
 from backend.strategy.signals import generate_signals, run_backtest
 from backend.strategy.auto_trade import (
@@ -139,6 +140,13 @@ async def stock_analysis(ticker: str, days: int = 365):
         "fundamental": fund,
         "history":     _build_history(df),
     }
+
+
+@app.get("/api/stock/{ticker}/news")
+async def stock_news(ticker: str):
+    fund = get_fundamental(ticker)
+    news = await asyncio.to_thread(get_stock_news, ticker, fund.get("name", ticker))
+    return {"news": news}
 
 
 # ── 個股回測 ─────────────────────────────────────────────────────────────────────

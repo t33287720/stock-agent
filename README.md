@@ -6,7 +6,7 @@
 
 ## 功能
 
-- **個股分析**：技術指標（RSI、MACD、KD、布林通道、SMA 等共 15 種）+ 基本面（P/E、P/B、ROE、殖利率）
+- **個股分析**：技術指標（RSI、MACD、KD、布林通道、SMA 等共 15 種）+ 基本面（P/E、P/B、ROE、殖利率）+ 相關新聞搜尋
 - **今日訊號掃描**：掃描追蹤股票池，找出今天觸發買進/賣出訊號的股票
 - **單股回測**：用歷史資料模擬單一股票的買賣訊號表現
 - **全組合回測**：將自動交易策略套用到過去歷史，逐交易日模擬最多 N 支股票的整體績效（總報酬、最大回撤、勝率、夏普比率）
@@ -44,6 +44,7 @@ api/
     config.py                    # 讀寫 settings.json（策略參數、快取設定）
     utils.py                     # 台股交易日曆 / 時區
     data/fetcher.py              # 股價、基本面抓取與快取
+    data/news.py                 # 個股相關新聞搜尋（DuckDuckGo，免 API key）
     analysis/technical.py        # 技術指標計算
     strategy/signals.py          # 買賣訊號、單股回測、手續費常數
     strategy/scanner.py          # 今日訊號掃描
@@ -100,6 +101,7 @@ deploy.sh                        # 重建並啟動所有容器（含清除殭屍
 | --- | --- | --- |
 | GET | `/api/top100` | 取得追蹤股票清單 |
 | GET | `/api/stock/{ticker}` | 個股技術 + 基本面分析 |
+| GET | `/api/stock/{ticker}/news` | 個股相關新聞搜尋（DuckDuckGo，快取 30 分鐘） |
 | POST | `/api/backtest/{ticker}` | 單股歷史回測 |
 | GET / POST | `/api/scan/today` | 今日訊號掃描（讀取快取 / 重新掃描） |
 | GET | `/api/auto/status` | 自動交易投資組合狀態 |

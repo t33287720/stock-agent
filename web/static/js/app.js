@@ -274,6 +274,38 @@ function renderFundTab(f) {
       ${metrics.map(m => `<div class="metric"><div class="label">${m.label}${tip(m.tipKey)}</div><div class="value">${m.value}</div></div>`).join('')}
     </div>
     ${f.description ? `<p style="margin-top:16px;color:var(--text-muted);font-size:12px;line-height:1.8">${f.description}</p>` : ''}
+  </div>
+  <div class="card">
+    <div class="card-header"><div class="card-title">📰 相關新聞</div></div>
+    <div id="news-content"><div class="loading" style="padding:40px 0;color:var(--text-muted)">載入新聞中...</div></div>
+  </div>`;
+}
+
+// ── Related news ──────────────────────────────────────────────────────────────
+let newsLoadedFor = null;
+
+async function loadNews(ticker) {
+  const el = document.getElementById('news-content');
+  if (!el) return;
+  try {
+    const r = await fetch(`${API}/api/stock/${ticker}/news`);
+    const data = await r.json();
+    el.innerHTML = renderNewsList(data.news || []);
+  } catch (e) {
+    el.innerHTML = `<div class="loading">新聞載入失敗：${e.message}</div>`;
+  }
+}
+
+function renderNewsList(news) {
+  if (!news.length) return '<div class="loading" style="padding:40px 0;color:var(--text-muted)">查無相關新聞</div>';
+  return `<div style="display:flex;flex-direction:column;gap:10px">
+    ${news.map(n => `
+      <a href="${escapeHtml(n.url || '#')}" target="_blank" rel="noopener noreferrer"
+         style="display:block;padding:12px;border:1px solid var(--border);border-radius:8px;text-decoration:none;color:inherit">
+        <div style="font-weight:600;font-size:13px">${escapeHtml(n.title)}</div>
+        <div style="color:var(--text-muted);font-size:11px;margin-top:6px">${escapeHtml(n.source)}${n.date ? ' · ' + escapeHtml(n.date) : ''}</div>
+        ${n.body ? `<div style="color:var(--text-muted);font-size:12px;margin-top:6px;line-height:1.6">${escapeHtml(n.body)}</div>` : ''}
+      </a>`).join('')}
   </div>`;
 }
 
@@ -1373,9 +1405,24 @@ function switchTab(tab) {
   });
   // Lazy-load simulation when tab is opened
   if (tab === 'simulation') loadSimulation();
+  // Lazy-load related news (once per ticker)
+  if (tab === 'fundamental' && newsLoadedFor !== currentTicker) {
+    newsLoadedFor = currentTicker;
+    loadNews(currentTicker);
+  }
 }
 
 // ── Utils ─────────────────────────────────────────────────────────────────────
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function formatMarketCap(v) {
   if (v >= 1e12) return (v / 1e12).toFixed(2) + ' 兆';
   if (v >= 1e8)  return (v / 1e8).toFixed(2)  + ' 億';
