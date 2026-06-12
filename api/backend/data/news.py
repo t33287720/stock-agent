@@ -1,16 +1,18 @@
 """
 個股相關新聞搜尋。
-使用 DuckDuckGo News（ddgs 套件），免 API key、免額外服務。
+透過自架的 SearXNG（docker-compose 中的 searxng 服務）查詢新聞，免 API key。
 結果以 JSON 檔快取於 cache/，TTL 較短（30 分鐘）以保持新聞時效性。
 """
 import json
+import os
 import time
 
-from ddgs import DDGS
+import requests
 
 from backend.data.fetcher import CACHE_DIR
 
 NEWS_CACHE_TTL = 1800  # 30 分鐘
+SEARXNG_URL = os.environ.get("SEARXNG_URL", "http://searxng:8080")
 
 
 def _news_cache_path(ticker: str):
@@ -45,15 +47,25 @@ def get_stock_news(ticker: str, name: str, limit: int = 8) -> list[dict]:
     query = f"{name} {ticker} 股票"
     results = []
     try:
-        with DDGS() as ddgs:
-            for r in ddgs.news(query, region="tw-tzh", safesearch="off", max_results=limit):
-                results.append({
-                    "title":  r.get("title"),
-                    "url":    r.get("url"),
-                    "source": r.get("source"),
-                    "date":   r.get("date"),
-                    "body":   r.get("body"),
-                })
+        resp = requests.get(
+            f"{SEARXNG_URL}/search",
+            params={
+                "q": query,
+                "format": "json",
+                "categories": "news",
+                "language": "zh-TW",
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        for r in resp.json().get("results", [])[:limit]:
+            results.append({
+                "title":  r.get("title"),
+                "url":    r.get("url"),
+                "source": r.get("engine"),
+                "date":   r.get("publishedDate"),
+                "body":   r.get("content"),
+            })
     except Exception as e:
         print(f"[news] {ticker} 搜尋失敗: {e}")
         return []

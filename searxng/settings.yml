@@ -1,0 +1,16 @@
+# SearXNG 設定 — 僅供本系統 api 容器內部呼叫，用於搜尋個股相關新聞。
+# 使用 use_default_settings 合併官方預設值，這裡只覆寫必要項目。
+# 文件: https://docs.searxng.org/admin/settings/use_default_settings.html
+use_default_settings: true
+
+general:
+  instance_name: "stock-news-search"
+
+server:
+  secret_key: "b83fbe59678f117816c704d7c88f286a5921fde586a05eb49da6d3aa92a546c1"
+  limiter: false
+
+search:
+  formats:
+    - html
+    - json

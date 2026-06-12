@@ -16,20 +16,21 @@
 
 ## 架構
 
-三個容器透過 `docker-compose.yml` 啟動：
+五個容器透過 `docker-compose.yml` 啟動：
 
 | 服務 | 說明 | 對外連接埠 |
 | --- | --- | --- |
 | `web` | PHP 8.3 + Nginx，提供前端頁面並把 `/api/` 反向代理到 `api` | 8080 |
 | `api` | Python FastAPI 後端，負責抓資料、計算指標、產生訊號、回測、自動交易 | （僅內部，由 `web` 代理） |
 | `db` | PostgreSQL 15，儲存自動交易的投資組合、持倉、交易紀錄、資產曲線 | （僅內部） |
+| `searxng` | 自架 SearXNG，供 `api` 搜尋個股相關新聞，免 API key | （僅內部） |
 | `adminer` | PostgreSQL 管理介面 | 8082 |
 
 ### 技術棧
 
 - **前端**：PHP（單頁 `index.php`）+ 原生 JavaScript（`web/static/js/app.js`）+ Chart.js
 - **後端**：Python 3.11 / FastAPI / pandas / `ta`
-- **資料來源**：`twstock`（主）、`yfinance`（備援與基本面）、TWSE OpenAPI（股票清單、P/E、P/B、殖利率）
+- **資料來源**：`twstock`（主）、`yfinance`（備援與基本面）、TWSE OpenAPI（股票清單、P/E、P/B、殖利率）、SearXNG（個股相關新聞）
 - **資料庫**：PostgreSQL（`psycopg2`）
 
 ### 目錄結構
@@ -44,7 +45,7 @@ api/
     config.py                    # 讀寫 settings.json（策略參數、快取設定）
     utils.py                     # 台股交易日曆 / 時區
     data/fetcher.py              # 股價、基本面抓取與快取
-    data/news.py                 # 個股相關新聞搜尋（DuckDuckGo，免 API key）
+    data/news.py                 # 個股相關新聞搜尋（透過 SearXNG，免 API key）
     analysis/technical.py        # 技術指標計算
     strategy/signals.py          # 買賣訊號、單股回測、手續費常數
     strategy/scanner.py          # 今日訊號掃描
@@ -60,6 +61,9 @@ web/
   system_map.html                # 互動式系統架構圖
   static/css/style.css
   static/js/app.js
+
+searxng/
+  settings.yml                   # SearXNG 設定（啟用 JSON API，供 api 內部呼叫）
 
 docker-compose.yml
 deploy.sh                        # 重建並啟動所有容器（含清除殭屍容器）
@@ -101,7 +105,7 @@ deploy.sh                        # 重建並啟動所有容器（含清除殭屍
 | --- | --- | --- |
 | GET | `/api/top100` | 取得追蹤股票清單 |
 | GET | `/api/stock/{ticker}` | 個股技術 + 基本面分析 |
-| GET | `/api/stock/{ticker}/news` | 個股相關新聞搜尋（DuckDuckGo，快取 30 分鐘） |
+| GET | `/api/stock/{ticker}/news` | 個股相關新聞搜尋（透過 SearXNG，快取 30 分鐘） |
 | POST | `/api/backtest/{ticker}` | 單股歷史回測 |
 | GET / POST | `/api/scan/today` | 今日訊號掃描（讀取快取 / 重新掃描） |
 | GET | `/api/auto/status` | 自動交易投資組合狀態 |

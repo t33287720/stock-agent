@@ -18,12 +18,22 @@ services:
       DB_NAME:     ${DB_NAME:-stockdb}
       DB_USER:     ${DB_USER:-stockuser}
       DB_PASSWORD: ${DB_PASSWORD:-stock2025pw}
+      SEARXNG_URL: http://searxng:8080
     volumes:
       - api_cache:/app/cache      # 股票快取（不進 image）
-      - api_config:/app/config    # settings.json（含 API key）
+      - api_config:/app/config    # settings.json
     depends_on:
       db:
         condition: service_healthy
+      searxng:
+        condition: service_started
+    restart: unless-stopped
+
+  # ── SearXNG（個股新聞搜尋，免 API key，僅供 api 內部呼叫）──────────────────────
+  searxng:
+    image: searxng/searxng:latest
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
     restart: unless-stopped
 
   # ── PostgreSQL（Python API 用）────────────────────────────────────────────────
