@@ -205,7 +205,9 @@ body {
     <div class="tags">
       <span class="tag tag-i">技術分析</span>
       <span class="tag tag-i">基本面</span>
+      <span class="tag tag-i">今日訊號掃描</span>
       <span class="tag tag-i">自動交易</span>
+      <span class="tag tag-i">策略歷史驗證</span>
     </div>
   </div>
   <div class="card-divider"></div>
@@ -223,6 +225,7 @@ body {
     <div class="tags">
       <span class="tag tag-i">查詢股票</span>
       <span class="tag tag-i">觸發分析</span>
+      <span class="tag tag-i">今日掃描</span>
       <span class="tag tag-i">執行交易</span>
       <span class="tag tag-i">執行回測</span>
     </div>
@@ -301,27 +304,28 @@ body {
 
 <!-- 台股日曆 -->
 <div class="card gray" id="c9" style="left:1050px;top:590px;width:260px"
-  data-tip="<b>台股交易日曆 (utils.py)</b><br>內建 2025-2026 全年假日清單，讓系統知道哪天要執行定時任務，哪天是假日要跳過。">
+  data-tip="<b>台股交易日曆 (utils.py)</b><br>內建 2025-2026 全年假日清單，讓全組合回測知道哪天開盤、哪天休市，逐個交易日往前推進模擬。">
   <div class="card-top">
     <div class="card-icon">📅</div>
     <div class="card-title">台股交易日曆</div>
-    <div class="card-desc">內建台股 2025~2026 全年假日，讓自動排程知道哪天開盤、哪天休市不需執行。</div>
+    <div class="card-desc">內建台股 2025~2026 全年假日，讓全組合回測逐個交易日往前推進，跳過假日和週末。</div>
   </div>
   <div class="card-divider"></div>
   <div class="card-bottom">🕐 Asia/Taipei 時區</div>
 </div>
 
-<!-- 4大流程速覽 -->
+<!-- 5大流程速覽 -->
 <div class="card purple" id="c10" style="left:1400px;top:590px;width:340px"
-  data-tip="<b>你可以用這個系統做 4 件事</b><br>每件事背後走的資料流路徑都不同。">
+  data-tip="<b>你可以用這個系統做 5 件事</b><br>每件事背後走的資料流路徑都不同。">
   <div class="card-top">
     <div class="card-icon">🗺️</div>
-    <div class="card-title">你可以做的 4 件事</div>
+    <div class="card-title">你可以做的 5 件事</div>
     <div class="card-desc" style="opacity:1">
       <div style="margin-bottom:5px">📌 <b>查個股</b>：選股票 → 抓資料 → 算指標 → 看圖表</div>
+      <div style="margin-bottom:5px">📌 <b>今日訊號掃描</b>：掃描全市場 → 找出今天有買/賣訊號的股票</div>
       <div style="margin-bottom:5px">📌 <b>單股回測</b>：用歷史資料模擬這支股票賺賠</div>
       <div style="margin-bottom:5px">📌 <b>全組合回測</b>：同時模擬前 40 支股票整年度</div>
-      <div>📌 <b>自動交易</b>：每天自動掃描 → 掛單 → 停損停利</div>
+      <div>📌 <b>自動交易</b>：點擊掃描 → 依規則自動買賣 → 停損停利</div>
     </div>
   </div>
   <div class="card-divider"></div>
@@ -335,7 +339,7 @@ body {
 
 <!-- 買賣訊號 -->
 <div class="card orange" id="c11" style="left:350px;top:990px;width:300px"
-  data-tip="<b>買賣訊號引擎 (signals.py)</b><br>根據技術指標判斷現在是買進時機還是賣出時機，也負責執行單股歷史回測。<br><br>台股手續費：買進 0.1425%，賣出 0.4425%（含0.3%交易稅）">
+  data-tip="<b>買賣訊號引擎 (signals.py)</b><br>根據技術指標判斷現在是買進時機還是賣出時機，也負責執行單股歷史回測。<br><br>這套規則是「今日訊號掃描 (scanner.py)」、自動交易、回測共用的同一份邏輯。<br><br>台股手續費：買進 0.1425%，賣出 0.4425%（含0.3%交易稅）">
   <div class="card-top">
     <div class="card-icon">🎯</div>
     <div class="card-title">判斷買還是賣</div>
@@ -351,11 +355,11 @@ body {
 
 <!-- 自動交易 -->
 <div class="card orange" id="c12" style="left:750px;top:990px;width:300px"
-  data-tip="<b>自動交易引擎 (auto_trade.py)</b><br>模擬真實投資組合管理，全自動執行，不需要你每天盯盤。<br><br>所有狀態都存在 PostgreSQL，系統重啟也不會消失。">
+  data-tip="<b>自動交易引擎 (auto_trade.py)</b><br>模擬投資組合管理。按下「早盤掃描」後，系統依規則自動判斷每支股票該買、該賣還是不動，以最新收盤價成交。<br><br>所有狀態都存在 PostgreSQL，系統重啟也不會消失。">
   <div class="card-top">
     <div class="card-icon">🤖</div>
-    <div class="card-title">自動幫你買賣</div>
-    <div class="card-desc">不需要你每天操作。系統自動掛限價單、自動停損、自動停利：</div>
+    <div class="card-title">幫你判斷買賣</div>
+    <div class="card-desc">按下「早盤掃描」後，系統依規則自動買賣，不需要你逐股判斷：</div>
     <div style="margin-top:8px;font-size:12px">
       <div style="margin-bottom:3px">💰 資金平均分配到最多 N 支持股</div>
       <div style="margin-bottom:3px">🛡 跌超過 7%，自動賣出停損</div>
@@ -369,7 +373,7 @@ body {
 
 <!-- 歷史模擬 -->
 <div class="card orange" id="c13" style="left:1150px;top:990px;width:300px"
-  data-tip="<b>全組合回測 (full_backtest.py)</b><br>把整個自動交易策略套到過去一年的歷史資料，看看這個策略如果從去年開始用，結果會如何。<br><br>嚴格避免使用未來資料（用D-1日訊號，D日執行）。">
+  data-tip="<b>全組合回測 (full_backtest.py)</b><br>把整個自動交易策略套到過去一年的歷史資料，看看這個策略如果從去年開始用，結果會如何。<br><br>訊號與成交邏輯跟自動交易完全一致：當天訊號、以當天收盤價成交，不偷看未來資料。">
   <div class="card-top">
     <div class="card-icon">📉</div>
     <div class="card-title">模擬「當時這樣做」</div>
@@ -384,29 +388,6 @@ body {
   <div class="card-divider"></div>
   <div class="card-bottom">⚡ 非同步執行，等待時不會卡住畫面</div>
 </div>
-
-<!-- 定時管家 -->
-<div class="card red" id="c14" style="left:1550px;top:990px;width:300px"
-  data-tip="<b>自動排程器 (scheduler.py)</b><br>像一個每天定時幫你工作的管家，只在台股交易日執行，假日和週末自動跳過。">
-  <div class="card-top">
-    <div class="card-icon">⏰</div>
-    <div class="card-title">每天定時自動執行</div>
-    <div class="card-desc">不需要你手動觸發，每個交易日自動執行兩次：</div>
-    <div style="margin-top:10px">
-      <div style="padding:8px 10px;background:#220d0d;border-radius:8px;border:1px solid #4a1a1a;margin-bottom:6px">
-        <div style="color:#f87171;font-weight:700;font-size:12px">🌅 每天 08:30</div>
-        <div style="font-size:11px;color:#8b949e;margin-top:3px">掃描前幾十支股票，找出買訊股票，設定今日限價買單</div>
-      </div>
-      <div style="padding:8px 10px;background:#0a1625;border-radius:8px;border:1px solid #1a3a6e">
-        <div style="color:#79b8ff;font-weight:700;font-size:12px">📈 每天 14:05</div>
-        <div style="font-size:11px;color:#8b949e;margin-top:3px">確認今日限價單是否成交，執行停損停利，記錄今日資產</div>
-      </div>
-    </div>
-  </div>
-  <div class="card-divider"></div>
-  <div class="card-bottom">📅 假日自動跳過 · 保留最近20筆執行記錄</div>
-</div>
-
 
 <!-- ═══════════════════════════════════════════════
   第四排：資料庫
@@ -425,7 +406,7 @@ body {
         <div class="dbtable-name">投資組合設定（portfolio_config）</div>
         <div class="dbtable-body">
           <div class="dbrow"><span class="dbcol-name">initial_capital</span><span class="dbcol-type">初始投入資金</span></div>
-          <div class="dbrow"><span class="dbcol-name">max_positions</span><span class="dbcol-type">最多同時持有幾支股票</span></div>
+          <div class="dbrow"><span class="dbcol-name">per_stock_budget</span><span class="dbcol-type">每檔股票的投入預算上限</span></div>
           <div class="dbrow"><span class="dbcol-name">cash</span><span class="dbcol-type">目前可用現金餘額</span></div>
           <div class="dbrow"><span class="dbcol-name">started_at</span><span class="dbcol-type">系統啟動時間</span></div>
         </div>
@@ -501,10 +482,9 @@ const EDGES = [
   // 輔助
   {a:'c4', b:'c8', col:'#6b7280', lbl:'存入快取'},
   {a:'c7', b:'c3', col:'#6b7280', lbl:'讀取設定'},
-  {a:'c9', b:'c14',col:'#6b7280', lbl:'交易日判斷'},
+  {a:'c9', b:'c13',col:'#6b7280', lbl:'交易日判斷'},
   // 策略→資料庫
   {a:'c12', b:'c15', col:'#0e7490', lbl:'存交易'},
-  {a:'c14', b:'c12', col:'#ef4444', lbl:'定時觸發'},
   {a:'c11', b:'c12', col:'#f59e0b', lbl:'訊號傳遞'},
 ];
 
@@ -512,7 +492,7 @@ const EDGES = [
 const DEFAULTS = {
   c1: [350,200], c2:[660,200], c3:[1020,200], c4:[1400,200], c5:[1780,200],
   c7: [350,590], c8:[700,590], c9:[1050,590], c10:[1400,590],
-  c11:[350,990], c12:[750,990], c13:[1150,990], c14:[1550,990],
+  c11:[350,990], c12:[750,990], c13:[1150,990],
   c15:[350,1430],
 };
 
