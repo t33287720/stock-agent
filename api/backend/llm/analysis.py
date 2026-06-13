@@ -7,9 +7,11 @@ import time
 from pathlib import Path
 
 from backend.data.fetcher import CACHE_DIR
+from backend.data.news import search_news
 from backend.llm.ollama_client import generate_json
 
 AI_CACHE_TTL = 3600  # 1 小時
+MAX_SEARCH_ROUNDS = 3  # 個股 AI 分析最多再延伸搜尋幾輪
 
 VERDICTS = ("偏多", "中性", "偏空")
 
@@ -25,6 +27,15 @@ _VERIFY_SYSTEM_PROMPT = (
     "請逐項檢查結論中的每一句陳述是否真的有原始資料支持，"
     "移除任何查無依據、憑空捏造或與資料矛盾的陳述，並據此調整信心分數。"
     "只能輸出與原結論格式完全相同的 JSON，不要有任何說明文字或 markdown。"
+)
+
+_SEARCH_DECISION_SYSTEM_PROMPT = (
+    "你是台股分析助手，正在準備分析資料。請判斷目前資料是否足夠做出可靠判斷；"
+    "如果不夠，可以提出一個搜尋關鍵字取得更多資訊（不限財經類，也可以用來查證"
+    "已取得消息是否屬實）。只能輸出 JSON：\n"
+    '{"need_search": true 或 false, "search_query": "..."}\n'
+    "如果資料已經足夠，need_search 設為 false，search_query 可留空字串。"
+    "不要有任何說明文字或 markdown。"
 )
 
 
@@ -65,6 +76,26 @@ def _verify_and_refine(context_block: str, first_result: dict) -> dict | None:
     return generate_json(prompt, system=_VERIFY_SYSTEM_PROMPT, temperature=0.1, num_predict=700)
 
 
+def _decide_additional_search(context_block: str, round_no: int, total: int) -> dict | None:
+    prompt = (
+        f"{context_block}\n\n"
+        f"（目前是第 {round_no}/{total} 輪資料蒐集）\n"
+        "請判斷是否需要再搜尋更多資訊，並輸出 JSON。"
+    )
+    return generate_json(prompt, system=_SEARCH_DECISION_SYSTEM_PROMPT, temperature=0.2, num_predict=150)
+
+
+def _format_extra_search_block(round_no: int, query: str, results: list[dict]) -> str:
+    if not results:
+        return f"延伸搜尋第 {round_no} 輪（關鍵字：{query}）：（查無結果）"
+    lines = [f"延伸搜尋第 {round_no} 輪（關鍵字：{query}）："]
+    for r in results:
+        title = r.get("title") or ""
+        body = (r.get("body") or "")[:100]
+        lines.append(f"- {title}：{body}")
+    return "\n".join(lines)
+
+
 # ── 個股 AI 分析 ───────────────────────────────────────────────────────────────────
 
 def _build_stock_context(ticker: str, name: str, technical: dict, fundamental: dict, news: list[dict]) -> str:
@@ -102,6 +133,19 @@ def _build_stock_context(ticker: str, name: str, technical: dict, fundamental: d
 
 def analyze_stock(ticker: str, name: str, technical: dict, fundamental: dict, news: list[dict]) -> dict:
     context = _build_stock_context(ticker, name, technical, fundamental, news)
+
+    extra_searches = []
+    for round_no in range(1, MAX_SEARCH_ROUNDS + 1):
+        decision = _decide_additional_search(context, round_no, MAX_SEARCH_ROUNDS)
+        if not isinstance(decision, dict) or not decision.get("need_search"):
+            break
+        query = str(decision.get("search_query") or "").strip()[:100]
+        if not query:
+            break
+        results = search_news(query, limit=5)
+        context += "\n\n" + _format_extra_search_block(round_no, query, results)
+        extra_searches.append({"round": round_no, "query": query, "results": results})
+
     prompt = (
         f"{context}\n\n"
         "請根據以上資料分析這支股票，輸出以下格式的 JSON：\n"
@@ -117,18 +161,20 @@ def analyze_stock(ticker: str, name: str, technical: dict, fundamental: dict, ne
 
     raw = generate_json(prompt, system=_SYSTEM_PROMPT, num_predict=800)
     if raw is None:
-        return _fallback_result("本機 LLM 無回應或逾時，請稍後再試")
+        return _fallback_result("本機 LLM 無回應或逾時，請稍後再試", extra_searches)
 
     verified = _verify_and_refine(context, raw)
     if verified is not None:
-        return _normalize_result(verified, verified_flag=True)
+        return _normalize_result(verified, verified_flag=True, extra_searches=extra_searches)
 
-    return _normalize_result(raw, verified_flag=False)
+    return _normalize_result(raw, verified_flag=False, extra_searches=extra_searches)
 
 
-def _normalize_result(raw: dict, verified_flag: bool) -> dict:
+def _normalize_result(raw: dict, verified_flag: bool, extra_searches: list[dict] | None = None) -> dict:
+    extra_searches = extra_searches or []
+
     if not isinstance(raw, dict):
-        return _fallback_result("AI 回應格式錯誤")
+        return _fallback_result("AI 回應格式錯誤", extra_searches)
 
     verdict = _map_verdict(str(raw.get("verdict", "")).strip())
 
@@ -143,7 +189,7 @@ def _normalize_result(raw: dict, verified_flag: bool) -> dict:
     summary = str(raw.get("summary", "")).strip()[:300]
 
     if not verdict or not summary:
-        return _fallback_result("AI 回應缺少必要欄位")
+        return _fallback_result("AI 回應缺少必要欄位", extra_searches)
 
     return {
         "verdict": verdict,
@@ -152,6 +198,7 @@ def _normalize_result(raw: dict, verified_flag: bool) -> dict:
         "risks": risks,
         "summary": summary,
         "verified": verified_flag,
+        "extra_searches": extra_searches,
     }
 
 
@@ -174,7 +221,7 @@ def _to_str_list(val) -> list[str]:
     return [str(item).strip()[:150] for item in val if str(item).strip()]
 
 
-def _fallback_result(reason: str) -> dict:
+def _fallback_result(reason: str, extra_searches: list[dict] | None = None) -> dict:
     return {
         "verdict": "中性",
         "confidence": 0,
@@ -183,6 +230,7 @@ def _fallback_result(reason: str) -> dict:
         "summary": reason,
         "verified": False,
         "error": True,
+        "extra_searches": extra_searches or [],
     }
 
 

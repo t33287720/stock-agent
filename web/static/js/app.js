@@ -321,7 +321,7 @@ function renderAiTabPlaceholder() {
       <button class="btn btn-primary" id="ai-run-btn" onclick="runAiAnalysis(false)">▶ 產生 AI 分析</button>
     </div>
     <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px">
-      由本機 LLM 根據技術指標、基本面與相關新聞產生分析，並經第二次驗證以降低幻覺風險。結果快取 1 小時。
+      由本機 LLM 根據技術指標、基本面與相關新聞產生分析，過程中可能自行延伸搜尋查證（最多 3 輪），並經第二次驗證以降低幻覺風險。結果快取 1 小時，可能需 1-2 分鐘。
     </p>
     <div id="ai-result">
       <div class="loading" style="padding:40px 0;color:var(--text-muted)">點擊「產生 AI 分析」開始</div>
@@ -334,7 +334,7 @@ async function runAiAnalysis(force = false) {
   const el  = document.getElementById('ai-result');
   const btn = document.getElementById('ai-run-btn');
   if (btn) btn.disabled = true;
-  el.innerHTML = `<div class="loading"><div class="spinner"></div> AI 分析中（含二次驗證，可能需 30 秒以上）...</div>`;
+  el.innerHTML = `<div class="loading"><div class="spinner"></div> AI 分析中（含延伸查證與二次驗證，可能需 1-2 分鐘）...</div>`;
   try {
     const r = await fetch(`${API}/api/stock/${currentTicker}/ai-analysis?force=${force}`, { method: 'POST' });
     const data = await r.json();
@@ -395,6 +395,25 @@ function renderAiResult(data) {
           </a>`).join('')}
       </div>` : `<div style="font-size:11px;color:var(--text-muted)">查無相關新聞，AI 分析僅根據技術指標與基本面</div>`}
     </div>
+    ${data.extra_searches?.length ? `
+    <div style="margin-bottom:14px">
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">🔍 AI 延伸查證</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${data.extra_searches.map(s => `
+        <div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">第 ${s.round} 輪・關鍵字：「${escapeHtml(s.query)}」</div>
+          ${s.results?.length ? `
+          <div style="display:flex;flex-direction:column;gap:6px">
+            ${s.results.map(n => `
+              <a href="${escapeHtml(n.url || '#')}" target="_blank" rel="noopener noreferrer"
+                 style="display:block;padding:8px 10px;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;font-size:12px">
+                <div style="font-weight:600">${escapeHtml(n.title || '')}</div>
+                <div style="color:var(--text-muted);font-size:10px;margin-top:4px">${escapeHtml(n.source || '')}${n.date ? ' · ' + escapeHtml(n.date) : ''}</div>
+              </a>`).join('')}
+          </div>` : `<div style="font-size:11px;color:var(--text-muted)">查無結果</div>`}
+        </div>`).join('')}
+      </div>
+    </div>` : ''}
     <p style="font-size:11px;color:var(--text-muted);border-top:1px solid var(--border);padding-top:10px">
       ⚠️ AI 分析僅供參考，不構成投資建議
     </p>`;

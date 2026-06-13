@@ -52,13 +52,8 @@ def _write_news_cache(ticker: str, data) -> None:
         json.dump(data, f, ensure_ascii=False)
 
 
-def get_stock_news(ticker: str, name: str, limit: int = 10) -> list[dict]:
-    """搜尋個股相關新聞，回傳 [{title, url, source, date, body}, ...]。"""
-    cached = _read_news_cache(ticker)
-    if cached is not None:
-        return cached
-
-    query = f"{name} {ticker} 股票 新聞"
+def _searxng_search(query: str, limit: int) -> list[dict]:
+    """呼叫 SearXNG 搜尋，回傳 [{title, url, source, date, body}, ...]（24 小時內，新到舊排序）。"""
     results = []
     try:
         resp = requests.get(
@@ -82,17 +77,30 @@ def get_stock_news(ticker: str, name: str, limit: int = 10) -> list[dict]:
                 "body":   r.get("content"),
             })
     except Exception as e:
-        print(f"[news] {ticker} 搜尋失敗: {e}")
+        print(f"[news] 搜尋失敗（{query}）: {e}")
         return []
 
-    # 過濾掉過舊的新聞，並依日期新到舊排序（無日期者排到最後）
+    # 過濾掉過舊的結果，並依日期新到舊排序（無日期者排到最後）
     now = datetime.now(timezone.utc)
     results = [
         r for r in results
         if (d := _parse_date(r["date"])) is None or now - d <= timedelta(days=NEWS_MAX_AGE_DAYS)
     ]
     results.sort(key=lambda r: _parse_date(r["date"]) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
-    results = results[:limit]
+    return results[:limit]
 
+
+def get_stock_news(ticker: str, name: str, limit: int = 10) -> list[dict]:
+    """搜尋個股相關新聞，回傳 [{title, url, source, date, body}, ...]。"""
+    cached = _read_news_cache(ticker)
+    if cached is not None:
+        return cached
+
+    results = _searxng_search(f"{name} {ticker} 股票 新聞", limit)
     _write_news_cache(ticker, results)
     return results
+
+
+def search_news(query: str, limit: int = 5) -> list[dict]:
+    """供 AI 分析延伸查證使用的通用搜尋，不快取。"""
+    return _searxng_search(query, limit)
