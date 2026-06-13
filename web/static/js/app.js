@@ -334,20 +334,78 @@ async function runAiAnalysis(force = false) {
   const el  = document.getElementById('ai-result');
   const btn = document.getElementById('ai-run-btn');
   if (btn) btn.disabled = true;
-  el.innerHTML = `<div class="loading"><div class="spinner"></div> AI 分析中（含延伸查證與二次驗證，可能需 1-2 分鐘）...</div>`;
+  el.innerHTML = `<div class="loading"><div class="spinner"></div> 準備中...</div>`;
+
+  let stepCount = 0;
   try {
     const r = await fetch(`${API}/api/stock/${currentTicker}/ai-analysis?force=${force}`, { method: 'POST' });
-    const data = await r.json();
-    el.innerHTML = renderAiResult(data);
-    if (btn) {
-      btn.textContent = '🔄 重新產生';
-      btn.onclick = () => runAiAnalysis(true);
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const evt = JSON.parse(line);
+
+        if (evt.type === 'step_start') {
+          stepCount++;
+          if (stepCount === 1) el.innerHTML = '';
+          el.insertAdjacentHTML('beforeend', renderLiveStep(evt.step, stepCount));
+        } else if (evt.type === 'step_done') {
+          const card = document.getElementById(`ai-live-step-${stepCount}`);
+          if (card) card.outerHTML = renderLiveStep(evt.step, stepCount);
+        } else if (evt.type === 'result') {
+          el.innerHTML = renderAiResult(evt.result);
+          if (btn) {
+            btn.textContent = '🔄 重新產生';
+            btn.onclick = () => runAiAnalysis(true);
+          }
+        }
+      }
     }
   } catch (e) {
     el.innerHTML = `<div class="loading">AI 分析失敗：${e.message}</div>`;
   } finally {
     if (btn) btn.disabled = false;
   }
+}
+
+// 顯示單一流程步驟（送給 LLM/SearXNG 的內容 + 回應，回應未到前顯示「運算中」）
+function renderStepBody(step) {
+  const pending = step.response === undefined;
+  const pendingText = step.label.includes('SearXNG') ? '搜尋中...' : 'LLM 運算中...';
+  return `
+    ${step.system ? `
+    <div style="margin-bottom:6px">
+      <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px">System Prompt</div>
+      <pre style="white-space:pre-wrap;word-break:break-all;font-size:11px;background:var(--surface2);border-radius:4px;padding:8px;margin:0;max-height:160px;overflow:auto">${escapeHtml(step.system)}</pre>
+    </div>` : ''}
+    ${step.prompt ? `
+    <div style="margin-bottom:6px">
+      <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px">User Prompt</div>
+      <pre style="white-space:pre-wrap;word-break:break-all;font-size:11px;background:var(--surface2);border-radius:4px;padding:8px;margin:0;max-height:240px;overflow:auto">${escapeHtml(step.prompt)}</pre>
+    </div>` : ''}
+    <div>
+      <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px">回應</div>
+      ${pending
+        ? `<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted)"><div class="spinner" style="width:14px;height:14px"></div> ${pendingText}</div>`
+        : `<pre style="white-space:pre-wrap;word-break:break-all;font-size:11px;background:var(--surface2);border-radius:4px;padding:8px;margin:0;max-height:240px;overflow:auto">${escapeHtml(JSON.stringify(step.response, null, 2))}</pre>`}
+    </div>`;
+}
+
+// 即時流程卡片：分析進行中即時插入/更新
+function renderLiveStep(step, index) {
+  return `<div id="ai-live-step-${index}" style="border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:10px">
+    <div style="font-size:12px;font-weight:600;margin-bottom:6px">步驟 ${index}：${escapeHtml(step.label)}</div>
+    ${renderStepBody(step)}
+  </div>`;
 }
 
 function renderAiResult(data) {
@@ -414,6 +472,17 @@ function renderAiResult(data) {
         </div>`).join('')}
       </div>
     </div>` : ''}
+    ${data.trace?.length ? `
+    <details style="margin-bottom:14px">
+      <summary style="font-size:12px;color:var(--text-muted);cursor:pointer">🔬 顯示完整流程（送給 LLM 的 prompt 與回應）</summary>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
+        ${data.trace.map((step, i) => `
+        <details style="border:1px solid var(--border);border-radius:6px;padding:8px 10px">
+          <summary style="font-size:12px;font-weight:600;cursor:pointer">步驟 ${i + 1}：${escapeHtml(step.label)}</summary>
+          <div style="margin-top:8px">${renderStepBody(step)}</div>
+        </details>`).join('')}
+      </div>
+    </details>` : ''}
     <p style="font-size:11px;color:var(--text-muted);border-top:1px solid var(--border);padding-top:10px">
       ⚠️ AI 分析僅供參考，不構成投資建議
     </p>`;

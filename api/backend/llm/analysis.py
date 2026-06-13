@@ -62,10 +62,10 @@ def save_analysis_cache(ticker: str, data: dict) -> None:
         json.dump(data, f, ensure_ascii=False)
 
 
-# ── 共用：第二次驗證（核對是否有幻覺）──────────────────────────────────────────────
+# ── 共用：prompt 組裝 ──────────────────────────────────────────────────────────────
 
-def _verify_and_refine(context_block: str, first_result: dict) -> dict | None:
-    prompt = (
+def _verify_prompt(context_block: str, first_result: dict) -> str:
+    return (
         f"{context_block}\n\n"
         "以下是分析師根據上述資料產出的結論（JSON）：\n"
         f"{json.dumps(first_result, ensure_ascii=False)}\n\n"
@@ -73,16 +73,39 @@ def _verify_and_refine(context_block: str, first_result: dict) -> dict | None:
         "移除查無依據的內容並調整信心分數，"
         "輸出修正後、格式完全相同的 JSON。"
     )
-    return generate_json(prompt, system=_VERIFY_SYSTEM_PROMPT, temperature=0.1, num_predict=700)
 
 
-def _decide_additional_search(context_block: str, round_no: int, total: int) -> dict | None:
-    prompt = (
+def _verify_and_refine(context_block: str, first_result: dict) -> tuple[str, dict | None]:
+    prompt = _verify_prompt(context_block, first_result)
+    return prompt, generate_json(prompt, system=_VERIFY_SYSTEM_PROMPT, temperature=0.1, num_predict=700)
+
+
+def _search_decision_prompt(context_block: str, round_no: int, total: int) -> str:
+    return (
         f"{context_block}\n\n"
         f"（目前是第 {round_no}/{total} 輪資料蒐集）\n"
         "請判斷是否需要再搜尋更多資訊，並輸出 JSON。"
     )
-    return generate_json(prompt, system=_SEARCH_DECISION_SYSTEM_PROMPT, temperature=0.2, num_predict=150)
+
+
+def _main_analysis_prompt(context_block: str) -> str:
+    return (
+        f"{context_block}\n\n"
+        "請根據以上資料分析這支股票，輸出以下格式的 JSON：\n"
+        "{\n"
+        '  "verdict": "偏多 | 中性 | 偏空",\n'
+        '  "confidence": 0-100之間的整數,\n'
+        '  "key_reasons": ["...", "..."],\n'
+        '  "risks": ["...", "..."],\n'
+        '  "summary": "150-250字繁體中文總結"\n'
+        "}\n"
+        "key_reasons 請列出 2-4 點支持你判斷的具體依據，risks 請列出 1-3 點需注意的風險。"
+    )
+
+
+def _trace_step(label: str, response, system: str | None = None, prompt: str | None = None) -> dict:
+    """記錄一個流程步驟（送給 LLM 的 prompt / SearXNG 查詢 + 收到的回應），供前端顯示完整流程。"""
+    return {"label": label, "system": system, "prompt": prompt, "response": response}
 
 
 def _format_extra_search_block(round_no: int, query: str, results: list[dict]) -> str:
@@ -131,50 +154,75 @@ def _build_stock_context(ticker: str, name: str, technical: dict, fundamental: d
     )
 
 
-def analyze_stock(ticker: str, name: str, technical: dict, fundamental: dict, news: list[dict]) -> dict:
-    context = _build_stock_context(ticker, name, technical, fundamental, news)
+def analyze_stock_stream(ticker: str, name: str, technical: dict, fundamental: dict, news: list[dict]):
+    """逐步執行個股 AI 分析（generator），供前端即時顯示整個流程。
 
+    依序 yield：
+    - {"type": "step_start", "step": {label, system, prompt}}：即將呼叫 LLM / SearXNG
+    - {"type": "step_done",  "step": {label, system, prompt, response}}：該步驟完成
+    最後 yield {"type": "result", "result": {...}}（與舊版 analyze_stock 回傳格式相同）。
+    """
+    context = _build_stock_context(ticker, name, technical, fundamental, news)
+    trace = []
     extra_searches = []
+
     for round_no in range(1, MAX_SEARCH_ROUNDS + 1):
-        decision = _decide_additional_search(context, round_no, MAX_SEARCH_ROUNDS)
+        label = f"延伸搜尋判斷（第 {round_no}/{MAX_SEARCH_ROUNDS} 輪）"
+        prompt = _search_decision_prompt(context, round_no, MAX_SEARCH_ROUNDS)
+        yield {"type": "step_start", "step": {"label": label, "system": _SEARCH_DECISION_SYSTEM_PROMPT, "prompt": prompt}}
+        decision = generate_json(prompt, system=_SEARCH_DECISION_SYSTEM_PROMPT, temperature=0.2, num_predict=150)
+        step = _trace_step(label, decision, system=_SEARCH_DECISION_SYSTEM_PROMPT, prompt=prompt)
+        trace.append(step)
+        yield {"type": "step_done", "step": step}
+
         if not isinstance(decision, dict) or not decision.get("need_search"):
             break
         query = str(decision.get("search_query") or "").strip()[:100]
         if not query:
             break
+
+        search_label = f"SearXNG 搜尋（第 {round_no} 輪）：「{query}」"
+        yield {"type": "step_start", "step": {"label": search_label, "system": None, "prompt": None}}
         results = search_news(query, limit=5)
+        step = _trace_step(search_label, {"query": query, "results": results})
+        trace.append(step)
+        yield {"type": "step_done", "step": step}
+
         context += "\n\n" + _format_extra_search_block(round_no, query, results)
         extra_searches.append({"round": round_no, "query": query, "results": results})
 
-    prompt = (
-        f"{context}\n\n"
-        "請根據以上資料分析這支股票，輸出以下格式的 JSON：\n"
-        "{\n"
-        '  "verdict": "偏多 | 中性 | 偏空",\n'
-        '  "confidence": 0-100之間的整數,\n'
-        '  "key_reasons": ["...", "..."],\n'
-        '  "risks": ["...", "..."],\n'
-        '  "summary": "150-250字繁體中文總結"\n'
-        "}\n"
-        "key_reasons 請列出 2-4 點支持你判斷的具體依據，risks 請列出 1-3 點需注意的風險。"
-    )
-
+    prompt = _main_analysis_prompt(context)
+    yield {"type": "step_start", "step": {"label": "主分析", "system": _SYSTEM_PROMPT, "prompt": prompt}}
     raw = generate_json(prompt, system=_SYSTEM_PROMPT, num_predict=800)
+    step = _trace_step("主分析", raw, system=_SYSTEM_PROMPT, prompt=prompt)
+    trace.append(step)
+    yield {"type": "step_done", "step": step}
+
     if raw is None:
-        return _fallback_result("本機 LLM 無回應或逾時，請稍後再試", extra_searches)
+        yield {"type": "result", "result": _fallback_result("本機 LLM 無回應或逾時，請稍後再試", extra_searches, trace)}
+        return
 
-    verified = _verify_and_refine(context, raw)
+    verify_prompt = _verify_prompt(context, raw)
+    yield {"type": "step_start", "step": {"label": "二次驗證", "system": _VERIFY_SYSTEM_PROMPT, "prompt": verify_prompt}}
+    verified = generate_json(verify_prompt, system=_VERIFY_SYSTEM_PROMPT, temperature=0.1, num_predict=700)
+    step = _trace_step("二次驗證", verified, system=_VERIFY_SYSTEM_PROMPT, prompt=verify_prompt)
+    trace.append(step)
+    yield {"type": "step_done", "step": step}
+
     if verified is not None:
-        return _normalize_result(verified, verified_flag=True, extra_searches=extra_searches)
+        result = _normalize_result(verified, verified_flag=True, extra_searches=extra_searches, trace=trace)
+    else:
+        result = _normalize_result(raw, verified_flag=False, extra_searches=extra_searches, trace=trace)
+    yield {"type": "result", "result": result}
 
-    return _normalize_result(raw, verified_flag=False, extra_searches=extra_searches)
 
-
-def _normalize_result(raw: dict, verified_flag: bool, extra_searches: list[dict] | None = None) -> dict:
+def _normalize_result(raw: dict, verified_flag: bool, extra_searches: list[dict] | None = None,
+                       trace: list[dict] | None = None) -> dict:
     extra_searches = extra_searches or []
+    trace = trace or []
 
     if not isinstance(raw, dict):
-        return _fallback_result("AI 回應格式錯誤", extra_searches)
+        return _fallback_result("AI 回應格式錯誤", extra_searches, trace)
 
     verdict = _map_verdict(str(raw.get("verdict", "")).strip())
 
@@ -189,7 +237,7 @@ def _normalize_result(raw: dict, verified_flag: bool, extra_searches: list[dict]
     summary = str(raw.get("summary", "")).strip()[:300]
 
     if not verdict or not summary:
-        return _fallback_result("AI 回應缺少必要欄位", extra_searches)
+        return _fallback_result("AI 回應缺少必要欄位", extra_searches, trace)
 
     return {
         "verdict": verdict,
@@ -199,6 +247,7 @@ def _normalize_result(raw: dict, verified_flag: bool, extra_searches: list[dict]
         "summary": summary,
         "verified": verified_flag,
         "extra_searches": extra_searches,
+        "trace": trace,
     }
 
 
@@ -221,7 +270,7 @@ def _to_str_list(val) -> list[str]:
     return [str(item).strip()[:150] for item in val if str(item).strip()]
 
 
-def _fallback_result(reason: str, extra_searches: list[dict] | None = None) -> dict:
+def _fallback_result(reason: str, extra_searches: list[dict] | None = None, trace: list[dict] | None = None) -> dict:
     return {
         "verdict": "中性",
         "confidence": 0,
@@ -231,6 +280,7 @@ def _fallback_result(reason: str, extra_searches: list[dict] | None = None) -> d
         "verified": False,
         "error": True,
         "extra_searches": extra_searches or [],
+        "trace": trace or [],
     }
 
 
@@ -276,7 +326,7 @@ def analyze_scan_candidate(ticker: str, name: str, signal_reason: str,
     if raw is None:
         return {"ai_confidence": None, "ai_summary": "AI 分析失敗", "has_news": has_news, "verified": False}
 
-    verified = _verify_and_refine(context, raw)
+    _, verified = _verify_and_refine(context, raw)
     if verified is not None:
         return _normalize_scan_result(verified, has_news, verified_flag=True)
 

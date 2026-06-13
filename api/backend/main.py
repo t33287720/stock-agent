@@ -3,6 +3,7 @@ FastAPI backend for Taiwan Stock AI Analyzer.
 Run: uvicorn backend.main:app --host 0.0.0.0 --port 8000
 """
 import asyncio
+import json
 import logging
 import math
 import sys
@@ -15,15 +16,17 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.concurrency import iterate_in_threadpool
 
 from backend.config import load_config, save_config
 from backend.data.fetcher import get_fundamental, get_stock_history, get_top100_stocks
 from backend.data.news import get_stock_news
 from backend.db import portfolio_db as db
 from backend.llm.analysis import (
-    analyze_stock,
+    analyze_stock_stream,
     get_cached_analysis, save_analysis_cache,
 )
 from backend.analysis.technical import calculate_indicators, get_indicator_summary
@@ -166,10 +169,13 @@ async def stock_news(ticker: str):
 
 @app.post("/api/stock/{ticker}/ai-analysis")
 async def stock_ai_analysis(ticker: str, force: bool = False):
+    """以 NDJSON 串流回傳分析過程：每完成一步就送出一行 JSON，最後送出最終結果。"""
     if not force:
         cached = await asyncio.to_thread(get_cached_analysis, ticker)
         if cached is not None:
-            return {**cached, "from_cache": True}
+            async def cached_stream():
+                yield json.dumps({"type": "result", "result": {**cached, "from_cache": True}}, ensure_ascii=False) + "\n"
+            return StreamingResponse(cached_stream(), media_type="application/x-ndjson")
 
     df_task = asyncio.to_thread(get_stock_history, ticker, 365)
     fund_task = asyncio.to_thread(get_fundamental, ticker)
@@ -181,13 +187,19 @@ async def stock_ai_analysis(ticker: str, force: bool = False):
     df = generate_signals(df)
     technical = get_indicator_summary(df)
     name = fund.get("name", ticker)
-
     news = await asyncio.to_thread(get_stock_news, ticker, name)
-    result = await asyncio.to_thread(analyze_stock, ticker, name, technical, fund, news)
-    result["news"] = news
 
-    await asyncio.to_thread(save_analysis_cache, ticker, result)
-    return {**result, "from_cache": False}
+    async def event_stream():
+        gen = analyze_stock_stream(ticker, name, technical, fund, news)
+        async for event in iterate_in_threadpool(gen):
+            if event["type"] == "result":
+                result = event["result"]
+                result["news"] = news
+                await asyncio.to_thread(save_analysis_cache, ticker, result)
+                event = {"type": "result", "result": {**result, "from_cache": False}}
+            yield json.dumps(event, ensure_ascii=False) + "\n"
+
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 
 
 # ── 個股回測 ─────────────────────────────────────────────────────────────────────
