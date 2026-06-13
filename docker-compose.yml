@@ -17,7 +17,7 @@ services:
       DB_PORT:     "5432"
       DB_NAME:     ${DB_NAME:-stockdb}
       DB_USER:     ${DB_USER:-stockuser}
-      DB_PASSWORD: ${DB_PASSWORD:-stock2025pw}
+      DB_PASSWORD: ${DB_PASSWORD:?請在 .env 設定 DB_PASSWORD}
       SEARXNG_URL: http://searxng:8080
       OLLAMA_URL: http://host.docker.internal:11434
     extra_hosts:
@@ -45,7 +45,7 @@ services:
     environment:
       POSTGRES_DB:       ${DB_NAME:-stockdb}
       POSTGRES_USER:     ${DB_USER:-stockuser}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-stock2025pw}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?請在 .env 設定 DB_PASSWORD}
     volumes:
       - ./db/data:/var/lib/postgresql/data
     healthcheck:

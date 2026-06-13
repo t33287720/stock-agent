@@ -34,16 +34,13 @@ def _db_cfg() -> dict:
             "port": int(os.environ.get("DB_PORT", "5432")),
             "name": os.environ.get("DB_NAME", "stockdb"),
             "user": os.environ.get("DB_USER", "stockuser"),
-            "password": os.environ.get("DB_PASSWORD", "stock2025pw"),
+            "password": os.environ["DB_PASSWORD"],
         }
-    # Fall back to settings.json "database" key
+    # Fall back to settings.json "database" key (local dev outside docker)
     cfg_path = Path(__file__).parent.parent.parent / "config" / "settings.json"
     with open(cfg_path, encoding="utf-8") as f:
         cfg = json.load(f)
-    return cfg.get("database", {
-        "host": "localhost", "port": 5435,
-        "name": "stockdb", "user": "stockuser", "password": "stock2025pw",
-    })
+    return cfg["database"]
 
 
 @contextmanager
