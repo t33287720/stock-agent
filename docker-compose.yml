@@ -23,8 +23,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - api_cache:/app/cache      # 股票快取（不進 image）
-      - api_config:/app/config    # settings.json
+      - ./api/cache:/app/cache    # 股票快取（不進 image）
+      - ./api/config:/app/config  # settings.json
     depends_on:
       db:
         condition: service_healthy
@@ -47,7 +47,7 @@ services:
       POSTGRES_USER:     ${DB_USER:-stockuser}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-stock2025pw}
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - ./db/data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-stockuser}"]
       interval: 10s
@@ -63,10 +63,3 @@ services:
     depends_on:
       - db
     restart: unless-stopped
-
-volumes:
-  db_data:
-    external: true
-    name: stock_postgres_data
-  api_cache:
-  api_config:
