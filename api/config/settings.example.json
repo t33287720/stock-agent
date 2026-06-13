@@ -1,15 +1,8 @@
 {
-  "api_keys": {
-    "anthropic": "",
-    "openai": "",
-    "gemini": ""
-  },
   "settings": {
-    "max_stocks": 100,
-    "backtest_days": 365,
     "cache_hours": 6,
-    "llm_provider": "gemini",
-    "llm_model": "gemini-2.5-flash"
+    "llm_model": "qwen2.5:7b",
+    "ollama_url": "http://host.docker.internal:11434"
   },
   "strategy": {
     "rsi_oversold": 30,

@@ -7,7 +7,8 @@
 ## 功能
 
 - **個股分析**：技術指標（RSI、MACD、KD、布林通道、SMA 等共 15 種）+ 基本面（P/E、P/B、ROE、殖利率）+ 相關新聞搜尋
-- **今日訊號掃描**：掃描追蹤股票池，找出今天觸發買進/賣出訊號的股票
+- **個股 AI 分析**：技術指標 + 基本面 + 相關新聞交給本機 Ollama LLM，產生偏多/中性/偏空判斷、信心度、理由與風險，並經第二次驗證降低幻覺
+- **今日訊號掃描**：掃描追蹤股票池，找出今天觸發買進/賣出訊號的股票，可選擇加入 AI 信心評分（含當日新聞佐證）
 - **單股回測**：用歷史資料模擬單一股票的買賣訊號表現
 - **全組合回測**：將自動交易策略套用到過去歷史，逐交易日模擬最多 N 支股票的整體績效（總報酬、最大回撤、勝率、夏普比率）
 - **自動交易（模擬）**：依據訊號規則自動買進/賣出、停損停利，所有持倉與交易紀錄存於 PostgreSQL，重啟不丟失
@@ -26,11 +27,14 @@
 | `searxng` | 自架 SearXNG，供 `api` 搜尋個股相關新聞，免 API key | （僅內部） |
 | `adminer` | PostgreSQL 管理介面 | 8082 |
 
+`api` 容器另外透過 `host.docker.internal:11434`（`extra_hosts: host-gateway`）呼叫**主機上的本機 Ollama**，用於 AI 分析功能；Ollama 本身不在本專案的 docker-compose 中，需另行安裝並啟動。
+
 ### 技術棧
 
 - **前端**：PHP（單頁 `index.php`）+ 原生 JavaScript（`web/static/js/app.js`）+ Chart.js
 - **後端**：Python 3.11 / FastAPI / pandas / `ta`
 - **資料來源**：`twstock`（主）、`yfinance`（備援與基本面）、TWSE OpenAPI（股票清單、P/E、P/B、殖利率）、SearXNG（個股相關新聞）
+- **AI 分析**：本機 Ollama（預設 `qwen2.5:7b`），JSON mode + 兩階段（生成 → 二次驗證）降低幻覺
 - **資料庫**：PostgreSQL（`psycopg2`）
 
 ### 目錄結構
@@ -46,6 +50,8 @@ api/
     utils.py                     # 台股交易日曆 / 時區
     data/fetcher.py              # 股價、基本面抓取與快取
     data/news.py                 # 個股相關新聞搜尋（透過 SearXNG，免 API key）
+    llm/ollama_client.py         # Ollama 傳輸層（JSON mode、容錯解析）
+    llm/analysis.py               # AI 分析：prompt、正規化、快取、二次驗證
     analysis/technical.py        # 技術指標計算
     strategy/signals.py          # 買賣訊號、單股回測、手續費常數
     strategy/scanner.py          # 今日訊號掃描
@@ -97,7 +103,14 @@ deploy.sh                        # 重建並啟動所有容器（含清除殭屍
 
 ## 設定
 
-策略參數（停損/停利百分比、RSI 門檻、均線週期、初始模擬資金等）可在前端「策略設定」頁面修改，會寫入 `api/config/settings.json`（`strategy` 區塊）。`settings` 區塊目前僅有 `cache_hours`（股價/基本面快取時數，預設 6 小時）。
+策略參數（停損/停利百分比、RSI 門檻、均線週期、初始模擬資金等）可在前端「策略設定」頁面修改，會寫入 `api/config/settings.json`（`strategy` 區塊）。
+
+`settings` 區塊：
+- `cache_hours`：股價/基本面快取時數（預設 6 小時）
+- `llm_model`：AI 分析使用的 Ollama 模型名稱（預設 `qwen2.5:7b`，需先 `ollama pull`）
+- `ollama_url`：Ollama 服務位址（預設 `http://host.docker.internal:11434`）
+
+以上兩項可在前端「策略設定」頁面的「AI 分析設定」卡片修改。
 
 ## 主要 API
 
@@ -106,8 +119,9 @@ deploy.sh                        # 重建並啟動所有容器（含清除殭屍
 | GET | `/api/top100` | 取得追蹤股票清單 |
 | GET | `/api/stock/{ticker}` | 個股技術 + 基本面分析 |
 | GET | `/api/stock/{ticker}/news` | 個股相關新聞搜尋（透過 SearXNG，快取 30 分鐘） |
+| POST | `/api/stock/{ticker}/ai-analysis` | 個股 AI 分析（本機 Ollama，快取 1 小時，`force=true` 強制重新產生） |
 | POST | `/api/backtest/{ticker}` | 單股歷史回測 |
-| GET / POST | `/api/scan/today` | 今日訊號掃描（讀取快取 / 重新掃描） |
+| GET / POST | `/api/scan/today` | 今日訊號掃描（讀取快取 / 重新掃描，`with_ai=true` 加入 AI 信心評分） |
 | GET | `/api/auto/status` | 自動交易投資組合狀態 |
 | POST | `/api/auto/init` | 初始化自動交易投資組合 |
 | POST | `/api/auto/trade` | 執行單筆自動交易（買/賣/自動判斷） |

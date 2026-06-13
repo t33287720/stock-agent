@@ -19,6 +19,9 @@ services:
       DB_USER:     ${DB_USER:-stockuser}
       DB_PASSWORD: ${DB_PASSWORD:-stock2025pw}
       SEARXNG_URL: http://searxng:8080
+      OLLAMA_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - api_cache:/app/cache      # 股票快取（不進 image）
       - api_config:/app/config    # settings.json

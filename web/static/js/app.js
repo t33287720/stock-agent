@@ -157,6 +157,7 @@ function renderAnalysis(data) {
       <div class="tab" onclick="switchTab('fundamental')">📋 基本面</div>
       <div class="tab" onclick="switchTab('backtest')">🧪 回測</div>
       <div class="tab" onclick="switchTab('simulation')">💰 模擬交易</div>
+      <div class="tab" onclick="switchTab('ai')">🤖 AI 分析</div>
     </div>
 
     <div id="tab-chart">
@@ -192,6 +193,9 @@ function renderAnalysis(data) {
     </div>
     <div id="tab-simulation" style="display:none">
       <div id="sim-content"><div class="loading" style="padding:40px 0;color:var(--text-muted)">載入模擬交易狀態...</div></div>
+    </div>
+    <div id="tab-ai" style="display:none">
+      ${renderAiTabPlaceholder()}
     </div>
   `;
 
@@ -307,6 +311,81 @@ function renderNewsList(news) {
         ${n.body ? `<div style="color:var(--text-muted);font-size:12px;margin-top:6px;line-height:1.6">${escapeHtml(n.body)}</div>` : ''}
       </a>`).join('')}
   </div>`;
+}
+
+// ── AI Analysis ───────────────────────────────────────────────────────────────
+function renderAiTabPlaceholder() {
+  return `<div class="card">
+    <div class="card-header">
+      <div class="card-title">🤖 AI 分析</div>
+      <button class="btn btn-primary" id="ai-run-btn" onclick="runAiAnalysis(false)">▶ 產生 AI 分析</button>
+    </div>
+    <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px">
+      由本機 LLM 根據技術指標、基本面與相關新聞產生分析，並經第二次驗證以降低幻覺風險。結果快取 1 小時。
+    </p>
+    <div id="ai-result">
+      <div class="loading" style="padding:40px 0;color:var(--text-muted)">點擊「產生 AI 分析」開始</div>
+    </div>
+  </div>`;
+}
+
+async function runAiAnalysis(force = false) {
+  if (!currentTicker) return;
+  const el  = document.getElementById('ai-result');
+  const btn = document.getElementById('ai-run-btn');
+  if (btn) btn.disabled = true;
+  el.innerHTML = `<div class="loading"><div class="spinner"></div> AI 分析中（含二次驗證，可能需 30 秒以上）...</div>`;
+  try {
+    const r = await fetch(`${API}/api/stock/${currentTicker}/ai-analysis?force=${force}`, { method: 'POST' });
+    const data = await r.json();
+    el.innerHTML = renderAiResult(data);
+    if (btn) {
+      btn.textContent = '🔄 重新產生';
+      btn.onclick = () => runAiAnalysis(true);
+    }
+  } catch (e) {
+    el.innerHTML = `<div class="loading">AI 分析失敗：${e.message}</div>`;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function renderAiResult(data) {
+  if (data.error) {
+    return `<div class="loading" style="padding:24px 0;color:var(--danger)">⚠ ${escapeHtml(data.summary || 'AI 分析失敗')}</div>`;
+  }
+
+  const verdictCls = { '偏多': 'badge-buy', '中性': 'badge-hold', '偏空': 'badge-sell' }[data.verdict] || 'badge-hold';
+  const cacheTag  = data.from_cache ? '💾 快取結果' : '✓ 剛產生';
+  const verifyTag = data.verified
+    ? '<span style="color:var(--success)">✓ 已二次驗證</span>'
+    : '<span style="color:var(--warning)">⚠ 未通過二次驗證（僅供初步參考）</span>';
+
+  return `
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+      <span class="badge ${verdictCls}">${escapeHtml(data.verdict)}</span>
+      <span style="font-size:13px;color:var(--text-muted)">信心度 ${data.confidence ?? '—'}%</span>
+      <span style="font-size:11px;color:var(--text-muted)">${cacheTag}</span>
+      ${verifyTag}
+    </div>
+    ${data.key_reasons?.length ? `
+    <div style="margin-bottom:14px">
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">支持理由</div>
+      <ul style="margin:0;padding-left:20px;font-size:13px;line-height:1.8">
+        ${data.key_reasons.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
+      </ul>
+    </div>` : ''}
+    ${data.risks?.length ? `
+    <div style="margin-bottom:14px">
+      <div style="font-size:12px;color:var(--warning);margin-bottom:6px">風險提示</div>
+      <ul style="margin:0;padding-left:20px;font-size:13px;line-height:1.8;color:var(--warning)">
+        ${data.risks.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
+      </ul>
+    </div>` : ''}
+    <p style="font-size:13px;line-height:1.8;margin-bottom:14px">${escapeHtml(data.summary)}</p>
+    <p style="font-size:11px;color:var(--text-muted);border-top:1px solid var(--border);padding-top:10px">
+      ⚠️ AI 分析僅供參考，不構成投資建議
+    </p>`;
 }
 
 // ── Backtest ──────────────────────────────────────────────────────────────────
@@ -691,6 +770,8 @@ async function showSettings() {
     document.getElementById('rsi-overbought').value = cfg.strategy.rsi_overbought || 70;
     document.getElementById('ma-short').value = cfg.strategy.ma_short || 20;
     document.getElementById('ma-long').value = cfg.strategy.ma_long || 60;
+    document.getElementById('llm-model').value = cfg.settings.llm_model || 'qwen2.5:7b';
+    document.getElementById('ollama-url').value = cfg.settings.ollama_url || 'http://host.docker.internal:11434';
   } catch (e) {
     showToast('無法連線後端', 'error');
   }
@@ -707,6 +788,10 @@ async function saveSettings() {
       rsi_overbought:   parseInt(document.getElementById('rsi-overbought').value),
       ma_short:         parseInt(document.getElementById('ma-short').value),
       ma_long:          parseInt(document.getElementById('ma-long').value),
+    },
+    settings: {
+      llm_model:  document.getElementById('llm-model').value.trim(),
+      ollama_url: document.getElementById('ollama-url').value.trim(),
     },
   };
   try {
@@ -911,6 +996,10 @@ async function showScanPage() {
           <option value="80">掃描 80 支</option>
           <option value="150" selected>掃描 150 支</option>
         </select>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="scan-with-ai" style="width:14px;height:14px">
+          加入 AI 信心分析（較慢）
+        </label>
         <button class="btn btn-primary" onclick="runScan()">🔍 重新掃描</button>
       </div>
     </div>
@@ -942,18 +1031,19 @@ async function showScanPage() {
 }
 
 async function runScan() {
-  const count = document.getElementById('scan-count')?.value || 80;
+  const count  = document.getElementById('scan-count')?.value || 80;
+  const withAi = document.getElementById('scan-with-ai')?.checked ?? false;
   const el = document.getElementById('scan-result');
   el.innerHTML = `
     <div style="text-align:center;padding:60px 0">
       <div class="spinner" style="margin:0 auto 16px"></div>
       <div style="font-weight:600">掃描中，請稍候...</div>
       <div style="font-size:12px;color:var(--text-muted);margin-top:6px">
-        正在分析前 ${count} 支股票的技術指標，約需 20–60 秒
+        正在分析前 ${count} 支股票的技術指標${withAi ? '，並對今日訊號進行 AI 信心分析' : ''}，約需 ${withAi ? '1–3 分鐘' : '20–60 秒'}
       </div>
     </div>`;
   try {
-    const r = await fetch(`${API}/api/scan/today?max_candidates=${count}`, { method: 'POST' });
+    const r = await fetch(`${API}/api/scan/today?max_candidates=${count}&with_ai=${withAi}`, { method: 'POST' });
     if (!r.ok) throw new Error(await r.text());
     const data = await r.json();
     renderScanResult(data, false);
@@ -990,6 +1080,9 @@ function renderScanResult(data, fromCache) {
       </div>
     </div>`;
 
+  const aiEnriched = !!data.ai_enriched;
+  const colCount = aiEnriched ? 9 : 8;
+
   const mkTable = (rows, type, title, subtitle, hdBg, hdBorder, hdColor) => `
     <div class="card" style="margin-bottom:16px">
       <div class="card-header" style="background:${hdBg};border-bottom:1px solid ${hdBorder}">
@@ -1007,13 +1100,14 @@ function renderScanResult(data, fromCache) {
               <th style="padding:8px;text-align:center">KD</th>
               <th style="padding:8px;text-align:center">均線</th>
               <th style="padding:8px;text-align:left">觸發訊號</th>
+              ${aiEnriched ? '<th style="padding:8px;text-align:center">AI信心</th>' : ''}
               <th style="padding:8px;text-align:center;white-space:nowrap">操作</th>
             </tr>
           </thead>
           <tbody>
             ${rows.length
-              ? rows.map(s => scanRow(s, type)).join('')
-              : `<tr><td colspan="8" style="padding:24px;text-align:center;color:var(--text-muted)">今日無候選</td></tr>`}
+              ? rows.map(s => scanRow(s, type, aiEnriched)).join('')
+              : `<tr><td colspan="${colCount}" style="padding:24px;text-align:center;color:var(--text-muted)">今日無候選</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -1031,7 +1125,7 @@ function renderScanResult(data, fromCache) {
       ⚠ ${errors.length} 筆異常：${errors.join('；')}</div>` : '');
 }
 
-function scanRow(s, type) {
+function scanRow(s, type, aiEnriched) {
   const rsiColor = s.rsi < 30 ? '#3fb950' : s.rsi > 70 ? '#f85149' : s.rsi > 60 ? '#e3b341' : 'var(--text-secondary)';
   const macdBadge = s.macd_bullish
     ? `<span style="color:#3fb950;font-weight:700">▲多</span>`
@@ -1042,6 +1136,19 @@ function scanRow(s, type) {
   const todayBadge = !s.is_today
     ? `<span style="color:var(--text-muted);margin-left:4px">⚠非今日</span>` : '';
   const reason = (s.signal_reason || '').replace('買入：','').replace('賣出：','');
+
+  let aiCell = '';
+  if (aiEnriched) {
+    const c = s.ai_confidence;
+    const cColor = c == null ? 'var(--text-muted)' : c >= 70 ? '#3fb950' : c >= 40 ? '#e3b341' : '#f85149';
+    const newsTag = s.ai_has_news ? ' 📰' : '';
+    const summary = escapeHtml(s.ai_summary || '');
+    aiCell = `
+      <td style="padding:8px;text-align:center;max-width:140px" title="${summary}">
+        <span style="color:${cColor};font-weight:700">${c ?? '—'}</span>${newsTag}
+        <div style="font-size:10px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${summary}</div>
+      </td>`;
+  }
 
   return `
     <tr id="stock-row-${s.ticker}" style="border-bottom:1px solid var(--border)"
@@ -1058,6 +1165,7 @@ function scanRow(s, type) {
       <td style="padding:8px;font-size:11px;color:var(--text-muted);max-width:180px">
         ${reason}${todayBadge}
       </td>
+      ${aiCell}
       <td style="padding:8px;text-align:center;white-space:nowrap">
         <button class="btn btn-outline" style="font-size:11px;padding:3px 8px;margin-right:4px"
           onclick="loadStock('${s.ticker}')">圖表</button>
@@ -1395,7 +1503,7 @@ function showPage(page) {
 
 
 function switchTab(tab) {
-  const all = ['chart', 'signals', 'fundamental', 'backtest', 'simulation'];
+  const all = ['chart', 'signals', 'fundamental', 'backtest', 'simulation', 'ai'];
   all.forEach(t => {
     const el = document.getElementById(`tab-${t}`);
     if (el) el.style.display = t === tab ? '' : 'none';

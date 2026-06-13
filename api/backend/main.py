@@ -5,6 +5,7 @@ Run: uvicorn backend.main:app --host 0.0.0.0 --port 8000
 import asyncio
 import math
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
@@ -18,6 +19,10 @@ from pydantic import BaseModel
 from backend.config import load_config, save_config
 from backend.data.fetcher import get_fundamental, get_stock_history, get_top100_stocks
 from backend.data.news import get_stock_news
+from backend.llm.analysis import (
+    analyze_stock, analyze_scan_candidate,
+    get_cached_analysis, save_analysis_cache,
+)
 from backend.analysis.technical import calculate_indicators, get_indicator_summary
 from backend.strategy.signals import generate_signals, run_backtest
 from backend.strategy.auto_trade import (
@@ -73,6 +78,42 @@ def _safe(val):
         return None if math.isnan(f) else round(f, 4)
     except (TypeError, ValueError):
         return None
+
+
+def _enrich_with_ai(result: dict) -> dict:
+    """為今日訊號候選股加上 AI 信心評分（含新聞佐證），僅處理 is_today=True 的候選。"""
+    candidates = result.get("buy_candidates", []) + result.get("sell_candidates", [])
+
+    def _enrich_one(c):
+        if not c.get("is_today"):
+            c["ai_confidence"] = None
+            c["ai_summary"] = None
+            c["ai_has_news"] = None
+            return
+        try:
+            name = c.get("name", c["ticker"])
+            news = get_stock_news(c["ticker"], name, limit=3)
+            technical_snapshot = {
+                "rsi": c.get("rsi"),
+                "macd_bullish": c.get("macd_bullish"),
+                "k": c.get("k"),
+                "d": c.get("d"),
+                "golden_cross": c.get("golden_cross"),
+            }
+            ai = analyze_scan_candidate(c["ticker"], name, c.get("signal_reason", ""), technical_snapshot, news)
+            c["ai_confidence"] = ai.get("ai_confidence")
+            c["ai_summary"] = ai.get("ai_summary")
+            c["ai_has_news"] = ai.get("has_news")
+        except Exception as e:
+            c["ai_confidence"] = None
+            c["ai_summary"] = f"AI 分析失敗: {str(e)[:40]}"
+            c["ai_has_news"] = None
+
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        list(ex.map(_enrich_one, candidates))
+
+    result["ai_enriched"] = True
+    return result
 
 
 def _build_history(df) -> list[dict]:
@@ -147,6 +188,31 @@ async def stock_news(ticker: str):
     fund = get_fundamental(ticker)
     news = await asyncio.to_thread(get_stock_news, ticker, fund.get("name", ticker))
     return {"news": news}
+
+
+@app.post("/api/stock/{ticker}/ai-analysis")
+async def stock_ai_analysis(ticker: str, force: bool = False):
+    if not force:
+        cached = await asyncio.to_thread(get_cached_analysis, ticker)
+        if cached is not None:
+            return {**cached, "from_cache": True}
+
+    df_task = asyncio.to_thread(get_stock_history, ticker, 365)
+    fund_task = asyncio.to_thread(get_fundamental, ticker)
+    df, fund = await asyncio.gather(df_task, fund_task)
+    if df.empty:
+        raise HTTPException(404, f"找不到 {ticker} 的歷史資料")
+
+    df = calculate_indicators(df)
+    df = generate_signals(df)
+    technical = get_indicator_summary(df)
+    name = fund.get("name", ticker)
+
+    news = await asyncio.to_thread(get_stock_news, ticker, name)
+    result = await asyncio.to_thread(analyze_stock, ticker, name, technical, fund, news)
+
+    await asyncio.to_thread(save_analysis_cache, ticker, result)
+    return {**result, "from_cache": False}
 
 
 # ── 個股回測 ─────────────────────────────────────────────────────────────────────
@@ -241,8 +307,10 @@ async def get_scan_cache():
 
 
 @app.post("/api/scan/today")
-async def scan_today_signals(max_candidates: int = 150):
+async def scan_today_signals(max_candidates: int = 150, with_ai: bool = False):
     result = await asyncio.to_thread(scan_today, max_candidates)
+    if with_ai:
+        result = await asyncio.to_thread(_enrich_with_ai, result)
     await asyncio.to_thread(save_scan, result)
     return result
 

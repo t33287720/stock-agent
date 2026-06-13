@@ -187,6 +187,26 @@
           <button class="btn btn-primary" onclick="saveSettings()">💾 儲存設定</button>
         </div>
       </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">🤖 AI 分析設定</div></div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Ollama 模型名稱</label>
+            <input type="text" id="llm-model" class="form-control" value="qwen2.5:7b" placeholder="例如 qwen2.5:7b、llama3.1:8b">
+          </div>
+          <div class="form-group">
+            <label>Ollama 服務位址</label>
+            <input type="text" id="ollama-url" class="form-control" value="http://host.docker.internal:11434">
+          </div>
+        </div>
+        <p style="font-size:11px;color:var(--text-muted)">
+          模型需先在 Ollama 中 pull 完成（例如 <code>docker exec ollama ollama pull qwen2.5:7b</code>）才能使用。
+        </p>
+        <div style="margin-top:8px">
+          <button class="btn btn-primary" onclick="saveSettings()">💾 儲存設定</button>
+        </div>
+      </div>
     </div>
 
   </main>

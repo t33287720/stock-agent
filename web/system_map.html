@@ -206,6 +206,7 @@ body {
       <span class="tag tag-i">技術分析</span>
       <span class="tag tag-i">基本面</span>
       <span class="tag tag-i">相關新聞</span>
+      <span class="tag tag-i">AI 分析</span>
       <span class="tag tag-i">今日訊號掃描</span>
       <span class="tag tag-i">自動交易</span>
       <span class="tag tag-i">策略歷史驗證</span>
@@ -333,6 +334,24 @@ body {
   <div class="card-bottom">💡 滑鼠移到各方塊可看詳細說明</div>
 </div>
 
+<!-- AI 分析 -->
+<div class="card purple" id="c16" style="left:1780px;top:590px;width:320px"
+  data-tip="<b>AI 分析 (llm/ollama_client.py · llm/analysis.py)</b><br>把技術指標、基本面與相關新聞整理成文字，交給本機 Ollama LLM（JSON mode）分析。<br><br>採兩階段流程：第一次產生初步判斷，第二次請同一個模型逐項核對結論是否真的有資料支持，移除查無依據的陳述並調整信心度，降低幻覺風險。<br><br>個股頁可手動觸發完整分析；今日訊號掃描也可選擇對候選股加上 AI 信心評分。">
+  <div class="card-top">
+    <div class="card-icon">🤖</div>
+    <div class="card-title">AI 分析（本機 LLM）</div>
+    <div class="card-desc">整合技術指標、基本面、相關新聞，交給本機 Ollama 產生偏多/中性/偏空判斷與信心度，並經第二次驗證降低幻覺。</div>
+    <div class="tags">
+      <span class="tag tag-i">技術指標</span>
+      <span class="tag tag-i">基本面</span>
+      <span class="tag tag-i">相關新聞</span>
+      <span class="tag tag-i">兩階段驗證</span>
+    </div>
+  </div>
+  <div class="card-divider"></div>
+  <div class="card-bottom">🦙 Ollama · 預設 qwen2.5:7b（可於設定頁調整）</div>
+</div>
+
 
 <!-- ═══════════════════════════════════════════════
   第三排：策略執行
@@ -340,7 +359,7 @@ body {
 
 <!-- 買賣訊號 -->
 <div class="card orange" id="c11" style="left:350px;top:990px;width:300px"
-  data-tip="<b>買賣訊號引擎 (signals.py)</b><br>根據技術指標判斷現在是買進時機還是賣出時機，也負責執行單股歷史回測。<br><br>這套規則是「今日訊號掃描 (scanner.py)」、自動交易、回測共用的同一份邏輯。<br><br>台股手續費：買進 0.1425%，賣出 0.4425%（含0.3%交易稅）">
+  data-tip="<b>買賣訊號引擎 (signals.py)</b><br>根據技術指標判斷現在是買進時機還是賣出時機，也負責執行單股歷史回測。<br><br>這套規則是「今日訊號掃描 (scanner.py)」、自動交易、回測共用的同一份邏輯。<br><br>台股手續費：買進 0.1425%，賣出 0.4425%（含0.3%交易稅）<br><br>今日訊號掃描可選擇加入 AI 信心分析（含當日新聞佐證）。">
   <div class="card-top">
     <div class="card-icon">🎯</div>
     <div class="card-title">判斷買還是賣</div>
@@ -487,12 +506,16 @@ const EDGES = [
   // 策略→資料庫
   {a:'c12', b:'c15', col:'#0e7490', lbl:'存交易'},
   {a:'c11', b:'c12', col:'#f59e0b', lbl:'訊號傳遞'},
+  // AI 分析
+  {a:'c5', b:'c16', col:'#6e40c9', lbl:'技術指標'},
+  {a:'c3', b:'c16', col:'#6e40c9', lbl:'AI分析請求'},
+  {a:'c16', b:'c11', col:'#6e40c9', lbl:'AI信心評分'},
 ];
 
 // ── 預設位置 ─────────────────────────────────────────────────────
 const DEFAULTS = {
   c1: [350,200], c2:[660,200], c3:[1020,200], c4:[1400,200], c5:[1780,200],
-  c7: [350,590], c8:[700,590], c9:[1050,590], c10:[1400,590],
+  c7: [350,590], c8:[700,590], c9:[1050,590], c10:[1400,590], c16:[1780,590],
   c11:[350,990], c12:[750,990], c13:[1150,990],
   c15:[350,1430],
 };

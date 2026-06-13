@@ -5,7 +5,9 @@ CONFIG_PATH = Path(__file__).parent.parent / "config" / "settings.json"
 
 DEFAULT_CONFIG = {
     "settings": {
-        "cache_hours": 6
+        "cache_hours": 6,
+        "llm_model": "qwen2.5:7b",
+        "ollama_url": "http://host.docker.internal:11434"
     },
     "strategy": {
         "rsi_oversold": 30,
