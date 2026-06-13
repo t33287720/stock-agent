@@ -146,6 +146,42 @@ def get_top100_stocks() -> list[dict]:
         return _fallback_stock_list()
 
 
+def _load_company_name_map() -> dict[str, str]:
+    """抓取台股（上市＋上櫃）公司簡稱對照表，例如 2330 → 台積電。
+
+    用公司簡稱（而非 yfinance 的英文 longName）才能讓 SearXNG 搜尋到較多中文新聞結果。
+    """
+    cache_key = f"company_names_{datetime.today().strftime('%Y-%m')}"
+    cached = _read_cache(cache_key)
+    if cached:
+        return cached
+
+    name_map = {}
+    sources = [
+        (f"{TWSE_BASE}/opendata/t187ap03_L", "公司代號", "公司簡稱"),
+        ("https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O", "SecuritiesCompanyCode", "CompanyAbbreviation"),
+    ]
+    for url, code_key, name_key in sources:
+        try:
+            resp = requests.get(url, headers=HEADERS, timeout=15)
+            resp.raise_for_status()
+            for item in resp.json():
+                code, name = item.get(code_key), item.get(name_key)
+                if code and name:
+                    name_map[code] = name
+        except Exception as e:
+            print(f"[fetcher] company name list error ({url}): {e}")
+
+    if name_map:
+        _write_cache(cache_key, name_map)
+    return name_map
+
+
+def get_company_name(ticker: str) -> Optional[str]:
+    """回傳台股中文公司簡稱（例：2330 → 台積電），查無資料則回傳 None。"""
+    return _load_company_name_map().get(ticker)
+
+
 def _fallback_stock_list() -> list[dict]:
     """Hardcoded fallback list of major Taiwan stocks."""
     major = [
@@ -279,7 +315,7 @@ def get_fundamental(ticker: str) -> dict:
         return cached
 
     data = {"ticker": ticker, "pe": None, "pb": None, "div_yield": None,
-            "eps": None, "roe": None}
+            "eps": None, "roe": None, "name": get_company_name(ticker)}
 
     try:
         date_str = datetime.today().strftime("%Y%m%d")
@@ -311,12 +347,16 @@ def get_fundamental(ticker: str) -> dict:
         if not data["pe"]:
             data["pe"] = info.get("trailingPE")
         data["market_cap"] = info.get("marketCap")
-        data["name"] = info.get("longName", ticker)
+        if not data["name"]:
+            data["name"] = info.get("longName", ticker)
         data["sector"] = info.get("sector", "")
         data["industry"] = info.get("industry", "")
         data["description"] = info.get("longBusinessSummary", "")[:500]
     except Exception:
         pass
+
+    if not data["name"]:
+        data["name"] = ticker
 
     _write_cache(cache_key, data)
     return data

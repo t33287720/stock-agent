@@ -36,6 +36,8 @@ _SEARCH_DECISION_SYSTEM_PROMPT = (
     "已取得消息是否屬實）。只能輸出 JSON：\n"
     '{"need_search": true 或 false, "search_query": "..."}\n'
     "如果資料已經足夠，need_search 設為 false，search_query 可留空字串。"
+    "search_query 請使用繁體中文公司名稱或中文關鍵字（這是台股新聞搜尋，"
+    "用英文公司名稱或股票代號搜尋效果不佳，例如應該搜尋「台積電」而不是「TSMC」）。"
     "不要有任何說明文字或 markdown。"
 )
 
