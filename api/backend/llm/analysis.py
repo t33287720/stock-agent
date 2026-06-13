@@ -11,7 +11,8 @@ from backend.data.news import search_news
 from backend.llm.ollama_client import generate_json
 
 AI_CACHE_TTL = 3600  # 1 小時
-MAX_SEARCH_ROUNDS = 3  # 個股 AI 分析最多再延伸搜尋幾輪
+MAX_SEARCH_ROUNDS = 10  # 個股 AI 分析最多再延伸搜尋幾輪
+ANALYSIS_NUM_CTX = 16384  # 延伸搜尋會讓 context 變長，需要比預設更大的視窗
 
 VERDICTS = ("偏多", "中性", "偏空")
 
@@ -170,7 +171,8 @@ def analyze_stock_stream(ticker: str, name: str, technical: dict, fundamental: d
         label = f"延伸搜尋判斷（第 {round_no}/{MAX_SEARCH_ROUNDS} 輪）"
         prompt = _search_decision_prompt(context, round_no, MAX_SEARCH_ROUNDS)
         yield {"type": "step_start", "step": {"label": label, "system": _SEARCH_DECISION_SYSTEM_PROMPT, "prompt": prompt}}
-        decision = generate_json(prompt, system=_SEARCH_DECISION_SYSTEM_PROMPT, temperature=0.2, num_predict=150)
+        decision = generate_json(prompt, system=_SEARCH_DECISION_SYSTEM_PROMPT, temperature=0.2,
+                                  num_predict=150, num_ctx=ANALYSIS_NUM_CTX)
         step = _trace_step(label, decision, system=_SEARCH_DECISION_SYSTEM_PROMPT, prompt=prompt)
         trace.append(step)
         yield {"type": "step_done", "step": step}
@@ -193,7 +195,7 @@ def analyze_stock_stream(ticker: str, name: str, technical: dict, fundamental: d
 
     prompt = _main_analysis_prompt(context)
     yield {"type": "step_start", "step": {"label": "主分析", "system": _SYSTEM_PROMPT, "prompt": prompt}}
-    raw = generate_json(prompt, system=_SYSTEM_PROMPT, num_predict=800)
+    raw = generate_json(prompt, system=_SYSTEM_PROMPT, num_predict=800, num_ctx=ANALYSIS_NUM_CTX)
     step = _trace_step("主分析", raw, system=_SYSTEM_PROMPT, prompt=prompt)
     trace.append(step)
     yield {"type": "step_done", "step": step}
@@ -204,7 +206,8 @@ def analyze_stock_stream(ticker: str, name: str, technical: dict, fundamental: d
 
     verify_prompt = _verify_prompt(context, raw)
     yield {"type": "step_start", "step": {"label": "二次驗證", "system": _VERIFY_SYSTEM_PROMPT, "prompt": verify_prompt}}
-    verified = generate_json(verify_prompt, system=_VERIFY_SYSTEM_PROMPT, temperature=0.1, num_predict=700)
+    verified = generate_json(verify_prompt, system=_VERIFY_SYSTEM_PROMPT, temperature=0.1,
+                              num_predict=700, num_ctx=ANALYSIS_NUM_CTX)
     step = _trace_step("二次驗證", verified, system=_VERIFY_SYSTEM_PROMPT, prompt=verify_prompt)
     trace.append(step)
     yield {"type": "step_done", "step": step}

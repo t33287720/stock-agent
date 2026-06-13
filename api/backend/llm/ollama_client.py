@@ -63,19 +63,23 @@ def _parse_json_relaxed(text: str) -> dict | None:
 
 
 def generate_json(prompt: str, system: str | None = None, model: str | None = None,
-                   temperature: float = 0.2, num_predict: int = 700) -> dict | None:
+                   temperature: float = 0.2, num_predict: int = 700,
+                   num_ctx: int | None = None) -> dict | None:
     """呼叫 Ollama /api/generate（JSON mode），回傳解析後的 dict，失敗回傳 None。"""
     url = f"{_resolve_url()}/api/generate"
+    options = {
+        "temperature": temperature,
+        "top_p": 0.9,
+        "num_predict": num_predict,
+    }
+    if num_ctx is not None:
+        options["num_ctx"] = num_ctx
     body = {
         "model": model or _resolve_model(),
         "prompt": prompt,
         "format": "json",
         "stream": False,
-        "options": {
-            "temperature": temperature,
-            "top_p": 0.9,
-            "num_predict": num_predict,
-        },
+        "options": options,
     }
     if system:
         body["system"] = system

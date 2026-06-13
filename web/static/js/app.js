@@ -321,7 +321,7 @@ function renderAiTabPlaceholder() {
       <button class="btn btn-primary" id="ai-run-btn" onclick="runAiAnalysis(false)">▶ 產生 AI 分析</button>
     </div>
     <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px">
-      由本機 LLM 根據技術指標、基本面與相關新聞產生分析，過程中可能自行延伸搜尋查證（最多 3 輪），並經第二次驗證以降低幻覺風險。結果快取 1 小時，可能需 1-2 分鐘。
+      由本機 LLM 根據技術指標、基本面與相關新聞產生分析，過程中可能自行延伸搜尋查證（最多 10 輪），並經第二次驗證以降低幻覺風險。結果快取 1 小時，可即時觀看分析過程，總時間可能較長。
     </p>
     <div id="ai-result">
       <div class="loading" style="padding:40px 0;color:var(--text-muted)">點擊「產生 AI 分析」開始</div>
