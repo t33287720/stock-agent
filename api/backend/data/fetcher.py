@@ -172,6 +172,17 @@ def _load_company_name_map() -> dict[str, str]:
         except Exception as e:
             print(f"[fetcher] company name list error ({url}): {e}")
 
+    # 補上 ETF 等不在公司基本資料裡的代號（來自每日成交資料，含中文名稱）
+    try:
+        resp = requests.get(f"{TWSE_BASE}/exchangeReport/STOCK_DAY_ALL", headers=HEADERS, timeout=15)
+        resp.raise_for_status()
+        for item in resp.json():
+            code, name = item.get("Code"), item.get("Name")
+            if code and name and code not in name_map:
+                name_map[code] = name
+    except Exception as e:
+        print(f"[fetcher] STOCK_DAY_ALL name list error: {e}")
+
     if name_map:
         _write_cache(cache_key, name_map)
     return name_map
