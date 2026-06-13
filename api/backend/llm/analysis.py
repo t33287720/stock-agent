@@ -166,6 +166,7 @@ def analyze_stock_stream(ticker: str, name: str, technical: dict, fundamental: d
     context = _build_stock_context(ticker, name, technical, fundamental, news)
     trace = []
     extra_searches = []
+    query_counts: dict[str, int] = {}
 
     for round_no in range(1, MAX_SEARCH_ROUNDS + 1):
         label = f"延伸搜尋判斷（第 {round_no}/{MAX_SEARCH_ROUNDS} 輪）"
@@ -183,15 +184,19 @@ def analyze_stock_stream(ticker: str, name: str, technical: dict, fundamental: d
         if not query:
             break
 
+        query_counts[query] = query_counts.get(query, 0) + 1
+        page = query_counts[query]
         search_label = f"SearXNG 搜尋（第 {round_no} 輪）：「{query}」"
+        if page > 1:
+            search_label += f"（第 {page} 頁）"
         yield {"type": "step_start", "step": {"label": search_label, "system": None, "prompt": None}}
-        results = search_news(query, limit=5)
-        step = _trace_step(search_label, {"query": query, "results": results})
+        results = search_news(query, limit=5, page=page)
+        step = _trace_step(search_label, {"query": query, "page": page, "results": results})
         trace.append(step)
         yield {"type": "step_done", "step": step}
 
         context += "\n\n" + _format_extra_search_block(round_no, query, results)
-        extra_searches.append({"round": round_no, "query": query, "results": results})
+        extra_searches.append({"round": round_no, "query": query, "page": page, "results": results})
 
     prompt = _main_analysis_prompt(context)
     yield {"type": "step_start", "step": {"label": "主分析", "system": _SYSTEM_PROMPT, "prompt": prompt}}

@@ -52,8 +52,12 @@ def _write_news_cache(ticker: str, data) -> None:
         json.dump(data, f, ensure_ascii=False)
 
 
-def _searxng_search(query: str, limit: int) -> list[dict]:
-    """呼叫 SearXNG 搜尋，回傳 [{title, url, source, date, body}, ...]（24 小時內，新到舊排序）。"""
+def _searxng_search(query: str, limit: int, page: int = 1) -> list[dict]:
+    """呼叫 SearXNG 搜尋，回傳 [{title, url, source, date, body}, ...]（24 小時內，新到舊排序）。
+
+    page 對應 SearXNG 的 pageno（每頁約 10 筆），用於同一關鍵字重複查詢時取得不同筆數的結果
+    （例如 page=2 約為第 11~20 筆），避免每次都拿到完全相同的結果。
+    """
     results = []
     try:
         resp = requests.get(
@@ -64,6 +68,7 @@ def _searxng_search(query: str, limit: int) -> list[dict]:
                 "categories": "general",
                 "language": "zh-TW",
                 "time_range": "day",
+                "pageno": max(1, page),
             },
             timeout=10,
         )
@@ -101,6 +106,10 @@ def get_stock_news(ticker: str, name: str, limit: int = 10) -> list[dict]:
     return results
 
 
-def search_news(query: str, limit: int = 5) -> list[dict]:
-    """供 AI 分析延伸查證使用的通用搜尋，不快取。"""
-    return _searxng_search(query, limit)
+def search_news(query: str, limit: int = 5, page: int = 1) -> list[dict]:
+    """供 AI 分析延伸查證使用的通用搜尋，不快取。
+
+    page > 1 時取得後續分頁的結果（約第 (page-1)*10+1 ~ page*10 筆），
+    供同一關鍵字重複搜尋時取得不同結果使用。
+    """
+    return _searxng_search(query, limit, page=page)

@@ -459,7 +459,7 @@ function renderAiResult(data) {
       <div style="display:flex;flex-direction:column;gap:10px">
         ${data.extra_searches.map(s => `
         <div>
-          <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">第 ${s.round} 輪・關鍵字：「${escapeHtml(s.query)}」</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">第 ${s.round} 輪・關鍵字：「${escapeHtml(s.query)}」${s.page > 1 ? `（第 ${s.page} 頁）` : ''}</div>
           ${s.results?.length ? `
           <div style="display:flex;flex-direction:column;gap:6px">
             ${s.results.map(n => `
