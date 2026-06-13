@@ -144,13 +144,19 @@ flowchart LR
 
 ## 開始使用
 
-1. 在專案根目錄建立 `.env`（PostgreSQL 連線資訊）：
+1. 複製 `.env.example` 為 `.env`，並設定 `DB_PASSWORD`（PostgreSQL 連線資訊）：
+
+   ```bash
+   cp .env.example .env
+   ```
 
    ```env
    DB_NAME=stockdb
    DB_USER=stockuser
    DB_PASSWORD=<your-password>
    ```
+
+   `.env` 已加入 `.gitignore`，不會被提交到版控。
 
 2. （選用）複製 `api/config/settings.example.json` 為 `api/config/settings.json` 並調整策略參數，否則系統會在首次啟動時自動建立預設設定。
 
