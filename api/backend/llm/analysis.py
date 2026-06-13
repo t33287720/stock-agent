@@ -38,6 +38,8 @@ _SEARCH_DECISION_SYSTEM_PROMPT = (
     "如果資料已經足夠，need_search 設為 false，search_query 可留空字串。"
     "search_query 請使用繁體中文公司名稱或中文關鍵字（這是台股新聞搜尋，"
     "用英文公司名稱或股票代號搜尋效果不佳，例如應該搜尋「台積電」而不是「TSMC」）。"
+    "關鍵字盡量簡短、聚焦單一主題（例如「台積電 法說會」），"
+    "避免堆疊過多修飾詞或同時塞入多個主題，否則容易查無結果。"
     "不要有任何說明文字或 markdown。"
 )
 
@@ -83,9 +85,18 @@ def _verify_and_refine(context_block: str, first_result: dict) -> tuple[str, dic
     return prompt, generate_json(prompt, system=_VERIFY_SYSTEM_PROMPT, temperature=0.1, num_predict=700)
 
 
-def _search_decision_prompt(context_block: str, round_no: int, total: int) -> str:
+def _search_decision_prompt(context_block: str, round_no: int, total: int,
+                             failed_queries: list[str] | None = None) -> str:
+    warning = ""
+    if failed_queries:
+        failed_list = "、".join(f"「{q}」" for q in failed_queries)
+        warning = (
+            f"\n\n⚠️ 注意：以下關鍵字搜尋皆「查無結果」：{failed_list}。"
+            "如果要繼續搜尋，請務必換成完全不同方向、更簡短、更通俗的中文關鍵字"
+            "（例如只用公司簡稱或單一主題詞），不要再用上述關鍵字或高度相似的詞彙。"
+        )
     return (
-        f"{context_block}\n\n"
+        f"{context_block}{warning}\n\n"
         f"（目前是第 {round_no}/{total} 輪資料蒐集）\n"
         "請判斷是否需要再搜尋更多資訊，並輸出 JSON。"
     )
@@ -169,10 +180,11 @@ def analyze_stock_stream(ticker: str, name: str, technical: dict, fundamental: d
     trace = []
     extra_searches = []
     query_counts: dict[str, int] = {}
+    failed_queries: list[str] = []
 
     for round_no in range(1, MAX_SEARCH_ROUNDS + 1):
         label = f"延伸搜尋判斷（第 {round_no}/{MAX_SEARCH_ROUNDS} 輪）"
-        prompt = _search_decision_prompt(context, round_no, MAX_SEARCH_ROUNDS)
+        prompt = _search_decision_prompt(context, round_no, MAX_SEARCH_ROUNDS, failed_queries)
         yield {"type": "step_start", "step": {"label": label, "system": _SEARCH_DECISION_SYSTEM_PROMPT, "prompt": prompt}}
         decision = generate_json(prompt, system=_SEARCH_DECISION_SYSTEM_PROMPT, temperature=0.2,
                                   num_predict=150, num_ctx=ANALYSIS_NUM_CTX)
@@ -199,6 +211,8 @@ def analyze_stock_stream(ticker: str, name: str, technical: dict, fundamental: d
 
         context += "\n\n" + _format_extra_search_block(round_no, query, results)
         extra_searches.append({"round": round_no, "query": query, "page": page, "results": results})
+        if not results and query not in failed_queries:
+            failed_queries.append(query)
 
     prompt = _main_analysis_prompt(context)
     yield {"type": "step_start", "step": {"label": "主分析", "system": _SYSTEM_PROMPT, "prompt": prompt}}
