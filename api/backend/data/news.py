@@ -52,7 +52,7 @@ def _write_news_cache(ticker: str, data) -> None:
         json.dump(data, f, ensure_ascii=False)
 
 
-def get_stock_news(ticker: str, name: str, limit: int = 8) -> list[dict]:
+def get_stock_news(ticker: str, name: str, limit: int = 10) -> list[dict]:
     """搜尋個股相關新聞，回傳 [{title, url, source, date, body}, ...]。"""
     cached = _read_news_cache(ticker)
     if cached is not None:
