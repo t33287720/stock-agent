@@ -32,9 +32,11 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  # ── SearXNG（個股新聞搜尋，免 API key，僅供 api 內部呼叫）──────────────────────
+  # ── SearXNG（個股新聞搜尋，免 API key，主要供 api 內部呼叫；對外開放方便手動驗證搜尋結果）──
   searxng:
     image: searxng/searxng:latest
+    ports:
+      - "8081:8080"
     volumes:
       - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
     restart: unless-stopped

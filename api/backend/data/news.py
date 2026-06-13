@@ -6,13 +6,27 @@
 import json
 import os
 import time
+from datetime import datetime, timedelta, timezone
 
 import requests
 
 from backend.data.fetcher import CACHE_DIR
 
 NEWS_CACHE_TTL = 1800  # 30 分鐘
+NEWS_MAX_AGE_DAYS = 1  # 只保留 24 小時內的新聞
 SEARXNG_URL = os.environ.get("SEARXNG_URL", "http://searxng:8080")
+
+
+def _parse_date(date_str):
+    if not date_str:
+        return None
+    try:
+        d = datetime.fromisoformat(date_str)
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=timezone.utc)
+        return d
+    except ValueError:
+        return None
 
 
 def _news_cache_path(ticker: str):
@@ -44,7 +58,7 @@ def get_stock_news(ticker: str, name: str, limit: int = 8) -> list[dict]:
     if cached is not None:
         return cached
 
-    query = f"{name} {ticker} 股票"
+    query = f"{name} {ticker} 股票 新聞"
     results = []
     try:
         resp = requests.get(
@@ -52,13 +66,14 @@ def get_stock_news(ticker: str, name: str, limit: int = 8) -> list[dict]:
             params={
                 "q": query,
                 "format": "json",
-                "categories": "news",
+                "categories": "general",
                 "language": "zh-TW",
+                "time_range": "day",
             },
             timeout=10,
         )
         resp.raise_for_status()
-        for r in resp.json().get("results", [])[:limit]:
+        for r in resp.json().get("results", []):
             results.append({
                 "title":  r.get("title"),
                 "url":    r.get("url"),
@@ -69,6 +84,15 @@ def get_stock_news(ticker: str, name: str, limit: int = 8) -> list[dict]:
     except Exception as e:
         print(f"[news] {ticker} 搜尋失敗: {e}")
         return []
+
+    # 過濾掉過舊的新聞，並依日期新到舊排序（無日期者排到最後）
+    now = datetime.now(timezone.utc)
+    results = [
+        r for r in results
+        if (d := _parse_date(r["date"])) is None or now - d <= timedelta(days=NEWS_MAX_AGE_DAYS)
+    ]
+    results.sort(key=lambda r: _parse_date(r["date"]) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    results = results[:limit]
 
     _write_news_cache(ticker, results)
     return results
