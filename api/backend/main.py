@@ -28,6 +28,7 @@ from backend.llm.analysis import (
 )
 from backend.analysis.technical import calculate_indicators, get_indicator_summary
 from backend.scheduler import scan_loop
+from backend.utils import TAIPEI
 from backend.strategy.signals import generate_signals, run_backtest
 from backend.strategy.auto_trade import (
     init_auto_portfolio, execute_trade,
@@ -131,7 +132,7 @@ async def top100():
     return {
         "stocks":     stocks,
         "count":      len(stocks),
-        "fetched_at": datetime.now().strftime("%H:%M"),
+        "fetched_at": datetime.now(TAIPEI).strftime("%H:%M"),
     }
 
 
@@ -183,6 +184,7 @@ async def stock_ai_analysis(ticker: str, force: bool = False):
 
     news = await asyncio.to_thread(get_stock_news, ticker, name)
     result = await asyncio.to_thread(analyze_stock, ticker, name, technical, fund, news)
+    result["news"] = news
 
     await asyncio.to_thread(save_analysis_cache, ticker, result)
     return {**result, "from_cache": False}

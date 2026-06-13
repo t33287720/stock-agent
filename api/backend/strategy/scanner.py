@@ -12,6 +12,7 @@ from backend.data.news import get_stock_news
 from backend.analysis.technical import calculate_indicators
 from backend.llm.analysis import analyze_scan_candidate
 from backend.strategy.signals import generate_signals, should_buy, should_sell
+from backend.utils import TAIPEI
 
 
 def scan_today(max_candidates: int = 80) -> dict:
@@ -116,7 +117,7 @@ def scan_today(max_candidates: int = 80) -> dict:
         "sell_count":      len(sell_candidates),
         "buy_candidates":  buy_candidates,
         "sell_candidates": sell_candidates,
-        "scan_time":       datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "scan_time":       datetime.now(TAIPEI).strftime("%Y-%m-%d %H:%M"),
         "errors":          errors[:5],
     }
 
@@ -130,6 +131,7 @@ def enrich_with_ai(result: dict) -> dict:
             c["ai_confidence"] = None
             c["ai_summary"] = None
             c["ai_has_news"] = None
+            c["ai_news"] = None
             return
         try:
             name = c.get("name", c["ticker"])
@@ -145,10 +147,12 @@ def enrich_with_ai(result: dict) -> dict:
             c["ai_confidence"] = ai.get("ai_confidence")
             c["ai_summary"] = ai.get("ai_summary")
             c["ai_has_news"] = ai.get("has_news")
+            c["ai_news"] = news
         except Exception as e:
             c["ai_confidence"] = None
             c["ai_summary"] = f"AI 分析失敗: {str(e)[:40]}"
             c["ai_has_news"] = None
+            c["ai_news"] = None
 
     with ThreadPoolExecutor(max_workers=3) as ex:
         list(ex.map(_enrich_one, candidates))

@@ -383,6 +383,18 @@ function renderAiResult(data) {
       </ul>
     </div>` : ''}
     <p style="font-size:13px;line-height:1.8;margin-bottom:14px">${escapeHtml(data.summary)}</p>
+    <div style="margin-bottom:14px">
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">參考新聞來源</div>
+      ${data.news?.length ? `
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${data.news.map(n => `
+          <a href="${escapeHtml(n.url || '#')}" target="_blank" rel="noopener noreferrer"
+             style="display:block;padding:8px 10px;border:1px solid var(--border);border-radius:6px;text-decoration:none;color:inherit;font-size:12px">
+            <div style="font-weight:600">${escapeHtml(n.title || '')}</div>
+            <div style="color:var(--text-muted);font-size:10px;margin-top:4px">${escapeHtml(n.source || '')}${n.date ? ' · ' + escapeHtml(n.date) : ''}</div>
+          </a>`).join('')}
+      </div>` : `<div style="font-size:11px;color:var(--text-muted)">查無相關新聞，AI 分析僅根據技術指標與基本面</div>`}
+    </div>
     <p style="font-size:11px;color:var(--text-muted);border-top:1px solid var(--border);padding-top:10px">
       ⚠️ AI 分析僅供參考，不構成投資建議
     </p>`;
@@ -1103,12 +1115,21 @@ function scanRow(s, type, aiEnriched) {
   if (aiEnriched) {
     const c = s.ai_confidence;
     const cColor = c == null ? 'var(--text-muted)' : c >= 70 ? '#3fb950' : c >= 40 ? '#e3b341' : '#f85149';
-    const newsTag = s.ai_has_news ? ' 📰' : '';
     const summary = escapeHtml(s.ai_summary || '');
+    const newsList = s.ai_news || [];
+    const newsHtml = newsList.length ? `
+        <details style="margin-top:4px;text-align:left">
+          <summary style="cursor:pointer;color:var(--text-muted);font-size:10px">📰 ${newsList.length} 則新聞來源</summary>
+          <div style="margin-top:4px;display:flex;flex-direction:column;gap:2px">
+            ${newsList.map(n => `<a href="${escapeHtml(n.url || '#')}" target="_blank" rel="noopener noreferrer"
+                style="font-size:10px;color:var(--accent,#58a6ff);text-decoration:none;white-space:normal">${escapeHtml(n.title || '')}</a>`).join('')}
+          </div>
+        </details>` : '';
     aiCell = `
-      <td style="padding:8px;text-align:center;max-width:140px" title="${summary}">
-        <span style="color:${cColor};font-weight:700">${c ?? '—'}</span>${newsTag}
+      <td style="padding:8px;text-align:center;max-width:160px" title="${summary}">
+        <span style="color:${cColor};font-weight:700">${c ?? '—'}</span>
         <div style="font-size:10px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${summary}</div>
+        ${newsHtml}
       </td>`;
   }
 
