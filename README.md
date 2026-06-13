@@ -43,9 +43,13 @@
 api/
   Dockerfile
   requirements.txt
-  config/settings.example.json   # 設定範例（實際設定存於 config/settings.json，不進版控）
+  cache/                          # 股價/基本面/AI 分析快取（bind mount，不進版控）
+  config/
+    settings.example.json         # 設定範例（實際設定存於 settings.json，不進版控）
+    settings.json
   backend/
     main.py                      # FastAPI 入口與所有路由
+    scheduler.py                 # 背景排程：容器啟動 + 每小時自動掃描/自動下單
     config.py                    # 讀寫 settings.json（策略參數、快取設定）
     utils.py                     # 台股交易日曆 / 時區
     data/fetcher.py              # 股價、基本面抓取與快取
@@ -60,6 +64,9 @@ api/
     db/portfolio_db.py           # PostgreSQL 存取層
     db/schema.sql                # 資料庫表結構
 
+db/
+  data/                           # PostgreSQL 資料目錄（bind mount，不進版控）
+
 web/
   Dockerfile
   docker/nginx.conf, supervisord.conf
@@ -73,6 +80,66 @@ searxng/
 
 docker-compose.yml
 deploy.sh                        # 重建並啟動所有容器（含清除殭屍容器）
+```
+
+## 開發者導覽
+
+以下流程圖說明各使用情境下，前端、API 路由與後端模組之間的呼叫關係。
+
+### 個股分析 / AI 分析
+
+```mermaid
+flowchart LR
+    UI[index.php<br/>個股分析頁] -->|GET /api/stock/ticker| StockAPI[main.py]
+    UI -->|POST /api/stock/ticker/ai-analysis| AIAPI[main.py]
+
+    StockAPI --> Fetcher[data/fetcher.py<br/>股價 + 基本面]
+    StockAPI --> Technical[analysis/technical.py<br/>技術指標]
+    StockAPI --> Signals[strategy/signals.py<br/>產生買賣訊號]
+
+    AIAPI --> Fetcher
+    AIAPI --> Technical
+    AIAPI --> News[data/news.py<br/>SearXNG 新聞搜尋]
+    AIAPI --> LLM[llm/analysis.py<br/>產生分析 + 二次驗證]
+    LLM --> Ollama[llm/ollama_client.py]
+    Ollama --> OllamaSvc[(主機 Ollama<br/>qwen2.5:7b)]
+```
+
+### 自動掃描背景排程
+
+容器啟動時立即執行一次，之後每小時檢查是否有新交易日資料；取代原本手動的「今日訊號掃描」「早盤掃描」按鈕。
+
+```mermaid
+flowchart LR
+    Start[容器啟動 / 每小時] --> Loop[scheduler.scan_loop]
+    Loop --> Cycle[scheduler.run_scan_cycle]
+    Cycle --> Check{是否有新<br/>交易日資料?}
+    Check -- 否 --> State[(scan_state 表)]
+    Check -- 是 --> Scan[strategy/scanner.scan_today]
+    Scan --> AI[strategy/scanner.enrich_with_ai<br/>視設定 auto_scan_with_ai]
+    AI --> Results[(scan_results 表)]
+    Results --> Morning[strategy/auto_trade.morning_scan<br/>若自動交易已初始化]
+    Morning --> Positions[(positions / trades 表)]
+    Morning --> State
+```
+
+### 策略歷史驗證（全組合回測）
+
+```mermaid
+flowchart LR
+    UI[index.php<br/>策略歷史驗證頁] -->|POST /api/full-backtest| API[main.py]
+    API --> FullBT[strategy/full_backtest.py]
+    FullBT --> Fetcher[data/fetcher.py<br/>批次抓歷史 K 線]
+    FullBT --> Signals[strategy/signals.py<br/>generate_signals / run_backtest]
+```
+
+### 策略設定
+
+```mermaid
+flowchart LR
+    UI[index.php<br/>策略設定頁] -->|GET / PUT /api/config| API[main.py]
+    API --> Config[config.py]
+    Config --> File[(api/config/settings.json)]
 ```
 
 ## 開始使用
@@ -109,8 +176,9 @@ deploy.sh                        # 重建並啟動所有容器（含清除殭屍
 - `cache_hours`：股價/基本面快取時數（預設 6 小時）
 - `llm_model`：AI 分析使用的 Ollama 模型名稱（預設 `qwen2.5:7b`，需先 `ollama pull`）
 - `ollama_url`：Ollama 服務位址（預設 `http://host.docker.internal:11434`）
+- `auto_scan_with_ai`：背景排程自動掃描時是否同時呼叫 Ollama 產生 AI 信心評分（預設開啟，會增加掃描時間）
 
-以上兩項可在前端「策略設定」頁面的「AI 分析設定」卡片修改。
+以上各項可在前端「策略設定」頁面的「AI 分析設定」卡片修改。
 
 ## 主要 API
 
@@ -121,11 +189,10 @@ deploy.sh                        # 重建並啟動所有容器（含清除殭屍
 | GET | `/api/stock/{ticker}/news` | 個股相關新聞搜尋（透過 SearXNG，快取 30 分鐘） |
 | POST | `/api/stock/{ticker}/ai-analysis` | 個股 AI 分析（本機 Ollama，快取 1 小時，`force=true` 強制重新產生） |
 | POST | `/api/backtest/{ticker}` | 單股歷史回測 |
-| GET / POST | `/api/scan/today` | 今日訊號掃描（讀取快取 / 重新掃描，`with_ai=true` 加入 AI 信心評分） |
+| GET | `/api/scan/today` | 今日訊號掃描結果（由背景排程每小時自動產生並存入 DB，前端僅讀取） |
 | GET | `/api/auto/status` | 自動交易投資組合狀態 |
 | POST | `/api/auto/init` | 初始化自動交易投資組合 |
 | POST | `/api/auto/trade` | 執行單筆自動交易（買/賣/自動判斷） |
-| POST | `/api/auto/scan` | 掃描並對候選股票下單 |
 | POST | `/api/auto/cancel/{ticker}` | 撤銷持倉 |
 | GET | `/api/auto/orders` | 今日委託紀錄 |
 | GET | `/api/auto/history` | 資產曲線歷史 |

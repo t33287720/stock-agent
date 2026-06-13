@@ -159,21 +159,122 @@ body {
   border-radius: 6px; padding: 5px 12px; font-size: 11px;
   color: #8b949e; z-index: 500; pointer-events: none;
 }
+
+/* ── 視角切換按鈕 ── */
+.view-toggle { display: flex; gap: 6px; flex-shrink: 0; }
+.view-btn {
+  padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px;
+  border: 1px solid #30363d; background: #21262d; color: #8b949e;
+  transition: all .15s;
+}
+.view-btn:hover { color: #c9d1d9; border-color: #58a6ff; }
+.view-btn.active { background: #0d2538; border-color: #1f6feb; color: #79b8ff; }
+
+/* ── 使用者視角：卡片網格 ── */
+#user-view {
+  position: fixed; top: 56px; left: 0; right: 0; bottom: 0;
+  overflow: auto; padding: 28px; user-select: text;
+}
+.uv-intro { max-width: 880px; margin: 0 auto 24px; color: #8b949e; font-size: 13px; line-height: 1.7; }
+.uv-intro b { color: #c9d1d9; }
+.uv-grid {
+  max-width: 1100px; margin: 0 auto;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;
+}
+.uv-card {
+  border-radius: 14px; border: 1.5px solid #30363d; background: #161b22;
+  padding: 18px 20px; cursor: default;
+}
+.uv-card .uv-icon { font-size: 28px; line-height: 1; margin-bottom: 8px; }
+.uv-card .uv-title { font-size: 15px; font-weight: 700; color: #79b8ff; margin-bottom: 8px; }
+.uv-card .uv-desc { font-size: 12.5px; line-height: 1.7; color: #c9d1d9; opacity: .9; }
+.uv-card .uv-meta {
+  margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.07);
+  font-size: 11px; color: #484f58; line-height: 1.6;
+}
+.uv-card .uv-meta b { color: #6b7280; }
 </style>
 </head>
 <body>
 
 <div id="topbar">
   <h1>🗺 台股 AI 系統 — 運作方式</h1>
-  <span class="hint-text">｜ 滑鼠拖曳方塊可移動 · 空白處拖曳平移 · 滾輪縮放</span>
+  <div class="view-toggle">
+    <button class="view-btn active" id="btn-view-user" onclick="setView('user')">👤 使用者視角</button>
+    <button class="view-btn" id="btn-view-dev" onclick="setView('dev')">🛠 開發者視角（技術細節）</button>
+  </div>
+  <span class="hint-text" id="dev-hint" style="display:none">｜ 滑鼠拖曳方塊可移動 · 空白處拖曳平移 · 滾輪縮放</span>
   <div class="spacer"></div>
-  <button class="btn" onclick="resetAll()">⊞ 回到預設</button>
-  <button class="btn" onclick="zoomIn()">＋</button>
-  <button class="btn" onclick="zoomOut()">－</button>
+  <button class="btn" id="btn-reset" style="display:none" onclick="resetAll()">⊞ 回到預設</button>
+  <button class="btn" id="btn-zoomin" style="display:none" onclick="zoomIn()">＋</button>
+  <button class="btn" id="btn-zoomout" style="display:none" onclick="zoomOut()">－</button>
   <a class="btn btn-green" href="/stock/" target="_blank">← 回主系統</a>
 </div>
 
-<div id="canvas">
+<!-- ═══════════════════════════════════════════════
+  使用者視角：每個頁面在做什麼（預設畫面）
+════════════════════════════════════════════════════ -->
+<div id="user-view">
+  <div class="uv-intro">
+    這個系統會自動每小時檢查台股資料是否更新，更新後背景排程會自動掃描並（若已啟用）自動下單模擬交易。
+    以下卡片依照左側導覽列的順序，說明每個頁面在做什麼、資料從哪裡來、你會看到什麼。
+    想看技術架構與模組之間的呼叫關係，可切換到右上角的<b>「開發者視角」</b>。
+  </div>
+  <div class="uv-grid">
+
+    <div class="uv-card">
+      <div class="uv-icon">🏠</div>
+      <div class="uv-title">首頁</div>
+      <div class="uv-desc">進入系統後的起始畫面，簡介本系統的四大功能：技術分析、基本面、AI 分析、歷史回測。從左側股票清單選擇或搜尋一支股票，就會進入「個股分析」頁面。</div>
+      <div class="uv-meta"><b>資料來源：</b>無（純導覽頁）<br><b>會看到：</b>功能介紹卡片</div>
+    </div>
+
+    <div class="uv-card">
+      <div class="uv-icon">📈</div>
+      <div class="uv-title">個股分析</div>
+      <div class="uv-desc">點選一支股票後顯示的詳細頁面。上方是 K 線圖（含均線、布林通道），下方列出 RSI、MACD、KD 等技術指標目前的狀態與買賣訊號，以及本益比、股價淨值比、殖利率等基本面數字，還有這支股票的相關新聞。</div>
+      <div class="uv-meta"><b>資料來源：</b>台灣證交所 / Yahoo Finance（股價、基本面）、SearXNG（新聞）<br><b>會看到：</b>K 線圖、技術指標、基本面數字、買賣訊號標記、相關新聞列表</div>
+    </div>
+
+    <div class="uv-card">
+      <div class="uv-icon">🤖</div>
+      <div class="uv-title">AI 分析</div>
+      <div class="uv-desc">在個股分析頁按下「AI 分析」後，系統把這支股票的技術指標、基本面、相關新聞整理好，交給本機運行的 AI（Ollama）判斷偏多／中性／偏空，並給出信心度與理由。系統會再做一次自我檢查，移除沒有資料支持的說法，降低 AI 亂掰的風險。</div>
+      <div class="uv-meta"><b>資料來源：</b>個股分析頁的技術指標 + 基本面 + 新聞 → 本機 Ollama<br><b>會看到：</b>多空判斷、信心度、分析理由與風險提示（結果快取 1 小時）</div>
+    </div>
+
+    <div class="uv-card">
+      <div class="uv-icon">🔍</div>
+      <div class="uv-title">今日訊號掃描</div>
+      <div class="uv-desc">系統每小時自動檢查股市是否有新的一天資料，有的話就自動掃描整個追蹤股票池，找出「今天剛好出現買進或賣出訊號」的股票，整理成清單。這頁只是顯示最近一次自動掃描的結果，不需要也沒有手動「重新掃描」按鈕。</div>
+      <div class="uv-meta"><b>資料來源：</b>背景排程自動產生，存於資料庫<br><b>會看到：</b>買入 / 賣出候選清單、每支股票的訊號原因、最後掃描時間</div>
+    </div>
+
+    <div class="uv-card">
+      <div class="uv-icon">💹</div>
+      <div class="uv-title">自動交易系統</div>
+      <div class="uv-desc">一個模擬投資組合（紙上交易）。初始化後，系統會在每小時的自動掃描中，依照訊號規則自動買進／賣出（含停損停利），所有持倉、交易紀錄、資產曲線都會存進資料庫，重啟系統也不會消失。</div>
+      <div class="uv-meta"><b>資料來源：</b>今日訊號掃描結果 + 自動下單規則 → PostgreSQL<br><b>會看到：</b>目前持倉、現金餘額、資產曲線圖、歷史委託紀錄</div>
+    </div>
+
+    <div class="uv-card">
+      <div class="uv-icon">🧪</div>
+      <div class="uv-title">策略歷史驗證</div>
+      <div class="uv-desc">把「自動交易系統」用的同一套規則，套用到過去一段時間（例如 24 個月）的歷史資料，模擬如果當時就用這套策略會賺賠多少，算出總報酬、最大回撤、勝率、夏普比率等指標，用來檢驗策略好壞。</div>
+      <div class="uv-meta"><b>資料來源：</b>批次抓取的歷史 K 線資料<br><b>會看到：</b>總報酬率、最大回撤、勝率、夏普比率、資金曲線圖、交易明細</div>
+    </div>
+
+    <div class="uv-card">
+      <div class="uv-icon">⚙️</div>
+      <div class="uv-title">策略設定</div>
+      <div class="uv-desc">調整策略使用的各種參數：停損／停利百分比、RSI 高低檔門檻、均線週期、初始模擬資金，以及 AI 分析使用的模型、是否在每小時自動掃描時順便做 AI 信心分析等。修改後會立即套用到下一次掃描與回測。</div>
+      <div class="uv-meta"><b>資料來源：</b>讀寫 api/config/settings.json<br><b>會看到：</b>各項策略參數輸入欄位、「AI 分析設定」卡片</div>
+    </div>
+
+  </div>
+</div>
+
+<div id="canvas" style="display:none">
 <div id="world">
 <svg id="svg-layer" width="8000" height="6000"></svg>
 
@@ -324,10 +425,10 @@ body {
     <div class="card-title">你可以做的 5 件事</div>
     <div class="card-desc" style="opacity:1">
       <div style="margin-bottom:5px">📌 <b>查個股</b>：選股票 → 抓資料 → 算指標 → 看圖表</div>
-      <div style="margin-bottom:5px">📌 <b>今日訊號掃描</b>：掃描全市場 → 找出今天有買/賣訊號的股票</div>
+      <div style="margin-bottom:5px">📌 <b>今日訊號掃描</b>：背景排程每小時自動掃描全市場 → 找出今天有買/賣訊號的股票</div>
       <div style="margin-bottom:5px">📌 <b>單股回測</b>：用歷史資料模擬這支股票賺賠</div>
       <div style="margin-bottom:5px">📌 <b>全組合回測</b>：同時模擬前 40 支股票整年度</div>
-      <div>📌 <b>自動交易</b>：點擊掃描 → 依規則自動買賣 → 停損停利</div>
+      <div>📌 <b>自動交易</b>：背景排程每小時自動掃描 → 依規則自動買賣 → 停損停利</div>
     </div>
   </div>
   <div class="card-divider"></div>
@@ -336,7 +437,7 @@ body {
 
 <!-- AI 分析 -->
 <div class="card purple" id="c16" style="left:1780px;top:590px;width:320px"
-  data-tip="<b>AI 分析 (llm/ollama_client.py · llm/analysis.py)</b><br>把技術指標、基本面與相關新聞整理成文字，交給本機 Ollama LLM（JSON mode）分析。<br><br>採兩階段流程：第一次產生初步判斷，第二次請同一個模型逐項核對結論是否真的有資料支持，移除查無依據的陳述並調整信心度，降低幻覺風險。<br><br>個股頁可手動觸發完整分析；今日訊號掃描也可選擇對候選股加上 AI 信心評分。">
+  data-tip="<b>AI 分析 (llm/ollama_client.py · llm/analysis.py)</b><br>把技術指標、基本面與相關新聞整理成文字，交給本機 Ollama LLM（JSON mode）分析。<br><br>採兩階段流程：第一次產生初步判斷，第二次請同一個模型逐項核對結論是否真的有資料支持，移除查無依據的陳述並調整信心度，降低幻覺風險。<br><br>個股頁可手動觸發完整分析；背景排程每小時自動掃描時，也會依設定（auto_scan_with_ai）對候選股加上 AI 信心評分。">
   <div class="card-top">
     <div class="card-icon">🤖</div>
     <div class="card-title">AI 分析（本機 LLM）</div>
@@ -359,7 +460,7 @@ body {
 
 <!-- 買賣訊號 -->
 <div class="card orange" id="c11" style="left:350px;top:990px;width:300px"
-  data-tip="<b>買賣訊號引擎 (signals.py)</b><br>根據技術指標判斷現在是買進時機還是賣出時機，也負責執行單股歷史回測。<br><br>這套規則是「今日訊號掃描 (scanner.py)」、自動交易、回測共用的同一份邏輯。<br><br>台股手續費：買進 0.1425%，賣出 0.4425%（含0.3%交易稅）<br><br>今日訊號掃描可選擇加入 AI 信心分析（含當日新聞佐證）。">
+  data-tip="<b>買賣訊號引擎 (signals.py)</b><br>根據技術指標判斷現在是買進時機還是賣出時機，也負責執行單股歷史回測。<br><br>這套規則是「今日訊號掃描 (scanner.py)」、自動交易、回測共用的同一份邏輯。<br><br>台股手續費：買進 0.1425%，賣出 0.4425%（含0.3%交易稅）<br><br>背景排程每小時自動掃描時，可依設定加入 AI 信心分析（含當日新聞佐證）。">
   <div class="card-top">
     <div class="card-icon">🎯</div>
     <div class="card-title">判斷買還是賣</div>
@@ -375,11 +476,11 @@ body {
 
 <!-- 自動交易 -->
 <div class="card orange" id="c12" style="left:750px;top:990px;width:300px"
-  data-tip="<b>自動交易引擎 (auto_trade.py)</b><br>模擬投資組合管理。按下「早盤掃描」後，系統依規則自動判斷每支股票該買、該賣還是不動，以最新收盤價成交。<br><br>所有狀態都存在 PostgreSQL，系統重啟也不會消失。">
+  data-tip="<b>自動交易引擎 (auto_trade.py)</b><br>模擬投資組合管理。背景排程每小時自動檢查資料更新，偵測到新交易日後，系統依規則自動判斷每支股票該買、該賣還是不動，以最新收盤價成交。<br><br>所有狀態都存在 PostgreSQL，系統重啟也不會消失。">
   <div class="card-top">
     <div class="card-icon">🤖</div>
     <div class="card-title">幫你判斷買賣</div>
-    <div class="card-desc">按下「早盤掃描」後，系統依規則自動買賣，不需要你逐股判斷：</div>
+    <div class="card-desc">背景排程每小時自動檢查資料更新，偵測到新資料後系統依規則自動買賣，不需要你逐股判斷：</div>
     <div style="margin-top:8px;font-size:12px">
       <div style="margin-bottom:3px">💰 資金平均分配到最多 N 支持股</div>
       <div style="margin-bottom:3px">🛡 跌超過 7%，自動賣出停損</div>
@@ -472,7 +573,7 @@ body {
 </div><!-- /canvas -->
 
 <div id="tip"></div>
-<div id="zoom-label">60%</div>
+<div id="zoom-label" style="display:none">60%</div>
 
 <script>
 // ── 初始狀態 ─────────────────────────────────────────────────────
@@ -673,9 +774,26 @@ function resetAll() {
   apply();
 }
 
+// ── 視角切換 ─────────────────────────────────────────────────────
+let devInitialized = false;
+function setView(v) {
+  const isDev = v === 'dev';
+  document.getElementById('user-view').style.display = isDev ? 'none' : 'block';
+  document.getElementById('canvas').style.display     = isDev ? 'block' : 'none';
+  document.getElementById('dev-hint').style.display   = isDev ? '' : 'none';
+  document.getElementById('btn-reset').style.display  = isDev ? '' : 'none';
+  document.getElementById('btn-zoomin').style.display = isDev ? '' : 'none';
+  document.getElementById('btn-zoomout').style.display= isDev ? '' : 'none';
+  zlabel.style.display = isDev ? '' : 'none';
+  document.getElementById('btn-view-user').classList.toggle('active', !isDev);
+  document.getElementById('btn-view-dev').classList.toggle('active', isDev);
+  if (isDev && !devInitialized) {
+    devInitialized = true;
+    resetAll();
+  }
+}
+
 // ── init ─────────────────────────────────────────────────────────
-resetAll();
-window.addEventListener('resize', drawEdges);
 setTimeout(drawEdges, 100);
 </script>
 </body>
