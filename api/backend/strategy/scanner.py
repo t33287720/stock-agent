@@ -8,9 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 from backend.data.fetcher import get_stock_history, get_top100_stocks
-from backend.data.news import get_stock_news
-from backend.analysis.technical import calculate_indicators
-from backend.llm.analysis import analyze_scan_candidate
+from backend.analysis.technical import calculate_indicators, get_indicator_summary
 from backend.strategy.signals import generate_signals, should_buy, should_sell
 from backend.utils import TAIPEI
 
@@ -42,6 +40,7 @@ def scan_today(max_candidates: int = 80) -> dict:
     # ── 依原始排名順序處理結果 ────────────────────────────────────────────────
     buy_candidates:  list[dict] = []
     sell_candidates: list[dict] = []
+    all_candidates:  list[dict] = []
     errors: list[str] = []
     scanned = 0
 
@@ -55,6 +54,12 @@ def scan_today(max_candidates: int = 80) -> dict:
         df          = df_or_err
         last_row    = df.iloc[-1]
         latest_date = str(df.index[-1])[:10]
+
+        all_candidates.append({
+            "ticker":    ticker,
+            "name":      s.get("name", ticker),
+            "technical": get_indicator_summary(df),
+        })
 
         price = float(last_row["Close"])
         rsi   = _safe_float(last_row.get("RSI"), 50.0)
@@ -117,48 +122,10 @@ def scan_today(max_candidates: int = 80) -> dict:
         "sell_count":      len(sell_candidates),
         "buy_candidates":  buy_candidates,
         "sell_candidates": sell_candidates,
+        "all_candidates":  all_candidates,
         "scan_time":       datetime.now(TAIPEI).strftime("%Y-%m-%d %H:%M"),
         "errors":          errors[:5],
     }
-
-
-def enrich_with_ai(result: dict) -> dict:
-    """為今日訊號候選股加上 AI 信心評分（含新聞佐證），僅處理 is_today=True 的候選。"""
-    candidates = result.get("buy_candidates", []) + result.get("sell_candidates", [])
-
-    def _enrich_one(c):
-        if not c.get("is_today"):
-            c["ai_confidence"] = None
-            c["ai_summary"] = None
-            c["ai_has_news"] = None
-            c["ai_news"] = None
-            return
-        try:
-            name = c.get("name", c["ticker"])
-            news = get_stock_news(c["ticker"], name, limit=3)
-            technical_snapshot = {
-                "rsi": c.get("rsi"),
-                "macd_bullish": c.get("macd_bullish"),
-                "k": c.get("k"),
-                "d": c.get("d"),
-                "golden_cross": c.get("golden_cross"),
-            }
-            ai = analyze_scan_candidate(c["ticker"], name, c.get("signal_reason", ""), technical_snapshot, news)
-            c["ai_confidence"] = ai.get("ai_confidence")
-            c["ai_summary"] = ai.get("ai_summary")
-            c["ai_has_news"] = ai.get("has_news")
-            c["ai_news"] = news
-        except Exception as e:
-            c["ai_confidence"] = None
-            c["ai_summary"] = f"AI 分析失敗: {str(e)[:40]}"
-            c["ai_has_news"] = None
-            c["ai_news"] = None
-
-    with ThreadPoolExecutor(max_workers=3) as ex:
-        list(ex.map(_enrich_one, candidates))
-
-    result["ai_enriched"] = True
-    return result
 
 
 def _safe_float(val, default: float = 0.0) -> float:

@@ -125,8 +125,19 @@ def init_db() -> None:
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS stock_ai_results (
+        ticker     VARCHAR(10) PRIMARY KEY,
+        name       VARCHAR(100),
+        scan_date  DATE NOT NULL,
+        verdict    VARCHAR(10),
+        confidence INTEGER,
+        result     JSONB NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     CREATE INDEX IF NOT EXISTS idx_trades_ticker ON trades(ticker);
     CREATE INDEX IF NOT EXISTS idx_trades_date   ON trades(trade_date);
+    CREATE INDEX IF NOT EXISTS idx_stock_ai_results_scan_date ON stock_ai_results(scan_date);
     """
     with _conn() as c:
         with c.cursor() as cur:
@@ -426,6 +437,64 @@ def get_latest_scan_result() -> dict | None:
             result["scan_date"] = str(row["scan_date"])
             result["created_at"] = row["created_at"].isoformat()
             return result
+
+
+# ── Stock AI results (批次 ReAct 分析) ─────────────────────────────────────────
+
+def save_stock_ai_result(ticker: str, name: str, scan_date: str, result: dict) -> None:
+    """Upsert a stock's AI analysis result (one row per ticker, overwritten daily)."""
+    with _conn() as c:
+        with c.cursor() as cur:
+            cur.execute("""
+                INSERT INTO stock_ai_results (ticker, name, scan_date, verdict, confidence, result, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                ON CONFLICT (ticker) DO UPDATE SET
+                    name       = EXCLUDED.name,
+                    scan_date  = EXCLUDED.scan_date,
+                    verdict    = EXCLUDED.verdict,
+                    confidence = EXCLUDED.confidence,
+                    result     = EXCLUDED.result,
+                    updated_at = NOW()
+            """, (
+                ticker, name, scan_date,
+                result.get("verdict"), result.get("confidence"),
+                json.dumps(result, ensure_ascii=False),
+            ))
+
+
+def get_stock_ai_results_for_date(scan_date: str) -> dict:
+    """Return {ticker: {**result, 'name': ...}} for all AI results matching scan_date."""
+    with _conn() as c:
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT ticker, name, result
+                FROM   stock_ai_results
+                WHERE  scan_date = %s
+            """, (scan_date,))
+            out = {}
+            for row in cur.fetchall():
+                entry = dict(row["result"])
+                entry["name"] = row["name"]
+                out[row["ticker"]] = entry
+            return out
+
+
+def get_stock_ai_result(ticker: str) -> dict | None:
+    """Return a single ticker's latest AI analysis result, or None."""
+    with _conn() as c:
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT ticker, name, scan_date, result
+                FROM   stock_ai_results
+                WHERE  ticker = %s
+            """, (ticker,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            entry = dict(row["result"])
+            entry["name"] = row["name"]
+            entry["scan_date"] = str(row["scan_date"])
+            return entry
 
 
 # ── Migration from JSON ────────────────────────────────────────────────────────

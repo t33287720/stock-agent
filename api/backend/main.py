@@ -283,7 +283,33 @@ async def get_scan_cache():
         return {"cached": False, "buy_candidates": [], "sell_candidates": [],
                 "scanned": 0, "scan_time": None}
     result["cached"] = True
+
+    scan_date = result.get("scan_date")
+    ai_results = await asyncio.to_thread(db.get_stock_ai_results_for_date, scan_date) if scan_date else {}
+    for c in result.get("buy_candidates", []) + result.get("sell_candidates", []):
+        ai = ai_results.get(c["ticker"])
+        c["ai_verdict"] = ai.get("verdict") if ai else None
+        c["ai_confidence"] = ai.get("confidence") if ai else None
+        c["ai_summary"] = ai.get("summary") if ai else None
+        c["ai_key_reasons"] = ai.get("key_reasons") if ai else None
+        c["ai_risks"] = ai.get("risks") if ai else None
+        c["ai_trace"] = ai.get("trace") if ai else None
+        c["ai_news"] = ai.get("news") if ai else None
+    result["ai_enriched"] = bool(ai_results)
+
+    result.pop("all_candidates", None)
     return result
+
+
+@app.get("/api/scan/ai-progress")
+async def get_scan_ai_progress():
+    result = await asyncio.to_thread(db.get_latest_scan_result)
+    if result is None:
+        return {"scan_date": None, "total": 0, "done": 0}
+    scan_date = result.get("scan_date")
+    total = len(result.get("all_candidates", []))
+    ai_results = await asyncio.to_thread(db.get_stock_ai_results_for_date, scan_date)
+    return {"scan_date": scan_date, "total": total, "done": len(ai_results)}
 
 
 # ── 設定 ─────────────────────────────────────────────────────────────────────────

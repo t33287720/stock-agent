@@ -873,6 +873,8 @@ async function showSettings() {
     document.getElementById('llm-model').value = cfg.settings.llm_model || 'qwen2.5:7b';
     document.getElementById('ollama-url').value = cfg.settings.ollama_url || 'http://host.docker.internal:11434';
     document.getElementById('auto-scan-with-ai').checked = cfg.settings.auto_scan_with_ai ?? true;
+    document.getElementById('ai-min-confidence-buy').value = cfg.strategy.ai_min_confidence_buy ?? 50;
+    document.getElementById('ai-min-confidence-sell').value = cfg.strategy.ai_min_confidence_sell ?? 60;
   } catch (e) {
     showToast('無法連線後端', 'error');
   }
@@ -889,6 +891,8 @@ async function saveSettings() {
       rsi_overbought:   parseInt(document.getElementById('rsi-overbought').value),
       ma_short:         parseInt(document.getElementById('ma-short').value),
       ma_long:          parseInt(document.getElementById('ma-long').value),
+      ai_min_confidence_buy:  parseInt(document.getElementById('ai-min-confidence-buy').value),
+      ai_min_confidence_sell: parseInt(document.getElementById('ai-min-confidence-sell').value),
     },
     settings: {
       llm_model:         document.getElementById('llm-model').value.trim(),
@@ -1100,10 +1104,14 @@ async function showScanPage() {
 
   // 顯示背景排程自動產生的掃描結果
   try {
-    const r = await fetch(`${API}/api/scan/today`);
+    const [r, progR] = await Promise.all([
+      fetch(`${API}/api/scan/today`),
+      fetch(`${API}/api/scan/ai-progress`),
+    ]);
     const data = await r.json();
+    const progress = await progR.json().catch(() => null);
     if (data.cached && (data.buy_candidates?.length || data.sell_candidates?.length)) {
-      renderScanResult(data);
+      renderScanResult(data, progress);
     } else {
       document.getElementById('scan-result').innerHTML = `
         <div style="text-align:center;padding:60px 0;color:var(--text-muted)">
@@ -1118,10 +1126,17 @@ async function showScanPage() {
   }
 }
 
-function renderScanResult(data) {
+function renderScanResult(data, progress) {
   const el = document.getElementById('scan-result');
   const { buy_candidates: buys = [], sell_candidates: sells = [],
           scanned = 0, scan_time = '', errors = [] } = data;
+
+  const aiProgressHtml = progress?.total
+    ? `<div style="background:var(--surface2);border-radius:8px;padding:8px 14px;display:flex;gap:8px;align-items:center">
+        <span>🤖</span><div><div style="font-size:10px;color:var(--text-muted)">AI 分析進度</div>
+        <div style="font-weight:700;font-size:14px">${progress.done} / ${progress.total}</div></div>
+      </div>`
+    : '';
 
   const statBar = `
     <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:center">
@@ -1137,6 +1152,7 @@ function renderScanResult(data) {
         <span>📉</span><div><div style="font-size:10px;color:#f85149">賣出候選</div>
         <div style="font-weight:700;font-size:14px;color:#f85149">${sells.length} 支</div></div>
       </div>
+      ${aiProgressHtml}
       <div style="margin-left:auto;text-align:right;font-size:11px;color:var(--text-muted)">
         最後掃描時間：${scan_time || '—'}<br>每小時自動檢查資料更新
       </div>
@@ -1162,7 +1178,7 @@ function renderScanResult(data) {
               <th style="padding:8px;text-align:center">KD</th>
               <th style="padding:8px;text-align:center">均線</th>
               <th style="padding:8px;text-align:left">觸發訊號</th>
-              ${aiEnriched ? '<th style="padding:8px;text-align:center">AI信心</th>' : ''}
+              ${aiEnriched ? '<th style="padding:8px;text-align:center">AI 分析</th>' : ''}
               <th style="padding:8px;text-align:center;white-space:nowrap">操作</th>
             </tr>
           </thead>
@@ -1201,23 +1217,53 @@ function scanRow(s, type, aiEnriched) {
 
   let aiCell = '';
   if (aiEnriched) {
+    const v = s.ai_verdict;
+    const verdictCls = { '偏多': 'badge-buy', '中性': 'badge-hold', '偏空': 'badge-sell' }[v] || '';
     const c = s.ai_confidence;
     const cColor = c == null ? 'var(--text-muted)' : c >= 70 ? '#3fb950' : c >= 40 ? '#e3b341' : '#f85149';
     const summary = escapeHtml(s.ai_summary || '');
+    const reasons = s.ai_key_reasons || [];
+    const risks = s.ai_risks || [];
+    const trace = s.ai_trace || [];
     const newsList = s.ai_news || [];
+
     const newsHtml = newsList.length ? `
-        <details style="margin-top:4px;text-align:left">
-          <summary style="cursor:pointer;color:var(--text-muted);font-size:10px">📰 ${newsList.length} 則新聞來源</summary>
-          <div style="margin-top:4px;display:flex;flex-direction:column;gap:2px">
+        <div style="font-size:10px;margin-top:4px"><b>新聞來源：</b>
+          <div style="margin-top:2px;display:flex;flex-direction:column;gap:2px">
             ${newsList.map(n => `<a href="${escapeHtml(n.url || '#')}" target="_blank" rel="noopener noreferrer"
                 style="font-size:10px;color:var(--accent,#58a6ff);text-decoration:none;white-space:normal">${escapeHtml(n.title || '')}</a>`).join('')}
           </div>
+        </div>` : '';
+
+    const traceHtml = trace.length ? `
+        <details style="margin-top:4px">
+          <summary style="cursor:pointer;color:var(--text-muted);font-size:10px">🔬 完整流程（${trace.length} 步）</summary>
+          <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+            ${trace.map((step, i) => `
+            <details style="border:1px solid var(--border);border-radius:6px;padding:6px 8px">
+              <summary style="font-size:10px;font-weight:600;cursor:pointer">步驟 ${i + 1}：${escapeHtml(step.label)}</summary>
+              <div style="margin-top:6px">${renderStepBody(step)}</div>
+            </details>`).join('')}
+          </div>
         </details>` : '';
+
     aiCell = `
-      <td style="padding:8px;text-align:center;max-width:160px" title="${summary}">
-        <span style="color:${cColor};font-weight:700">${c ?? '—'}</span>
-        <div style="font-size:10px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${summary}</div>
-        ${newsHtml}
+      <td style="padding:8px;text-align:center;max-width:220px">
+        ${v
+          ? `<span class="badge ${verdictCls}" style="font-size:10px">${escapeHtml(v)}</span>
+             <span style="color:${cColor};font-weight:700;margin-left:4px">${c ?? '—'}%</span>`
+          : `<span style="color:var(--text-muted);font-size:11px">分析中...</span>`}
+        ${summary ? `<div style="font-size:10px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px" title="${summary}">${summary}</div>` : ''}
+        ${v ? `
+        <details style="margin-top:4px;text-align:left">
+          <summary style="cursor:pointer;color:var(--text-muted);font-size:10px">詳細</summary>
+          <div style="margin-top:4px">
+            ${reasons.length ? `<div style="font-size:10px;margin-bottom:4px"><b>理由：</b><ul style="margin:2px 0 0 14px;padding:0">${reasons.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul></div>` : ''}
+            ${risks.length ? `<div style="font-size:10px;color:var(--warning);margin-bottom:4px"><b>風險：</b><ul style="margin:2px 0 0 14px;padding:0">${risks.map(x => `<li>${escapeHtml(x)}</li>`).join('')}</ul></div>` : ''}
+            ${newsHtml}
+            ${traceHtml}
+          </div>
+        </details>` : ''}
       </td>`;
   }
 

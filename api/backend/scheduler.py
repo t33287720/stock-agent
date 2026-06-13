@@ -9,8 +9,9 @@ import logging
 from backend.config import load_config
 from backend.data.fetcher import last_trading_day_str
 from backend.db import portfolio_db as db
+from backend.strategy.ai_batch import run_batch_ai_analysis
 from backend.strategy.auto_trade import morning_scan
-from backend.strategy.scanner import scan_today, enrich_with_ai
+from backend.strategy.scanner import scan_today
 
 logger = logging.getLogger(__name__)
 
@@ -30,15 +31,14 @@ def run_scan_cycle() -> None:
     logger.info("[scheduler] 偵測到新交易日 %s，開始自動掃描", current)
 
     result = scan_today(max_candidates=SCAN_MAX_CANDIDATES)
+    db.save_scan_result(current, result)
 
     cfg = load_config()
     if cfg.get("settings", {}).get("auto_scan_with_ai", True):
         try:
-            result = enrich_with_ai(result)
+            run_batch_ai_analysis(result.get("all_candidates", []), current)
         except Exception:
-            logger.exception("[scheduler] AI 信心分析失敗，略過")
-
-    db.save_scan_result(current, result)
+            logger.exception("[scheduler] AI 批次分析失敗")
 
     if db.load_portfolio():
         try:

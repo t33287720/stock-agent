@@ -206,11 +206,28 @@
         <div class="form-group" style="margin-top:8px">
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
             <input type="checkbox" id="auto-scan-with-ai" style="width:14px;height:14px">
-            自動掃描時同步進行 AI 信心分析
+            每日對前150大成交量股票進行完整 AI 分析，並套用於自動交易
           </label>
           <p style="font-size:11px;color:var(--text-muted);margin-top:4px">
-            每小時自動掃描找到今日訊號時，是否同時呼叫 Ollama 產生信心評分與摘要（會增加掃描時間）。
+            偵測到新交易日時，對前 150 大成交量股票逐一執行完整 AI 分析（最多 10 輪延伸搜尋），
+            結果存入資料庫供今日訊號掃描顯示，並供自動交易系統過濾買入/觸發提早賣出（可能需數十分鐘至數小時）。
           </p>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>AI 買入信心門檻 (%)</label>
+            <input type="number" id="ai-min-confidence-buy" class="form-control" value="50" min="0" max="100" step="5">
+            <p style="font-size:11px;color:var(--text-muted);margin-top:4px">
+              買入訊號股票的 AI 信心低於此值，或 AI 判斷為「偏空」時，自動交易會略過該買入。
+            </p>
+          </div>
+          <div class="form-group">
+            <label>AI 提早賣出信心門檻 (%)</label>
+            <input type="number" id="ai-min-confidence-sell" class="form-control" value="60" min="0" max="100" step="5">
+            <p style="font-size:11px;color:var(--text-muted);margin-top:4px">
+              持倉股票的 AI 判斷為「偏空」且信心 ≥ 此值時，自動交易會提早賣出（即使尚未觸發停損停利）。
+            </p>
+          </div>
         </div>
         <div style="margin-top:8px">
           <button class="btn btn-primary" onclick="saveSettings()">💾 儲存設定</button>

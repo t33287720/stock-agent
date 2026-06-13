@@ -16,7 +16,7 @@ Paper-trading engine — PostgreSQL backend.
 from datetime import datetime
 
 from backend.config import load_config
-from backend.data.fetcher import get_stock_history, get_top100_stocks, get_latest_close
+from backend.data.fetcher import get_stock_history, get_top100_stocks, get_latest_close, last_trading_day_str
 from backend.analysis.technical import calculate_indicators
 from backend.strategy.signals import generate_signals, should_buy, should_sell, check_exit, COMMISSION, TAX
 import backend.db.portfolio_db as db
@@ -157,9 +157,14 @@ def morning_scan(max_candidates: int = 100) -> dict:
     批次掃描：先賣出持倉釋放資金，再用剩餘資金買入新訊號。
     兩個階段都並行抓資料，加速完成。
     """
-    cfg    = load_config()["strategy"]
+    full_cfg = load_config()
+    cfg    = full_cfg["strategy"]
     tp_pct = cfg.get("take_profit_pct", 15) / 100
     sl_pct = cfg.get("stop_loss_pct",    7) / 100
+    ai_buy_min  = cfg.get("ai_min_confidence_buy", 50)
+    ai_sell_min = cfg.get("ai_min_confidence_sell", 60)
+    ai_enabled  = full_cfg.get("settings", {}).get("auto_scan_with_ai", True)
+    ai_results  = db.get_stock_ai_results_for_date(last_trading_day_str()) if ai_enabled else {}
 
     portfolio = db.load_portfolio()
     if not portfolio:
@@ -205,6 +210,12 @@ def morning_scan(max_candidates: int = 100) -> dict:
         df, price = pos_data[ticker]
         recent = list(df.iloc[-3:].to_dict("records")) if len(df) >= 3 else list(df.to_dict("records"))
         exit_price, exit_reason = check_exit(pos, price, recent)
+
+        if not exit_price:
+            ai = ai_results.get(ticker)
+            if ai and ai.get("verdict") == "偏空" and (ai.get("confidence") or 0) >= ai_sell_min:
+                exit_price = price
+                exit_reason = f"AI研判偏空（信心{ai.get('confidence')}%）：{(ai.get('summary') or '')[:40]}"
 
         if exit_price:
             if db.sold_today(ticker):
@@ -284,6 +295,12 @@ def morning_scan(max_candidates: int = 100) -> dict:
 
         if not should_buy(last_row):
             continue
+
+        ai = ai_results.get(ticker)
+        if ai and (ai.get("verdict") == "偏空" or (ai.get("confidence") or 0) < ai_buy_min):
+            errors.append(f"{ticker}: AI過濾（{ai.get('verdict')}，信心{ai.get('confidence')}%），略過買入")
+            continue
+
         sig_date = str(df.index[-1])[:10]
         if last_trading_day and sig_date != last_trading_day:
             errors.append(f"{ticker}: 訊號非最新交易日（{sig_date} ≠ {last_trading_day}），跳過")
