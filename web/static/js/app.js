@@ -772,6 +772,7 @@ async function showSettings() {
     document.getElementById('ma-long').value = cfg.strategy.ma_long || 60;
     document.getElementById('llm-model').value = cfg.settings.llm_model || 'qwen2.5:7b';
     document.getElementById('ollama-url').value = cfg.settings.ollama_url || 'http://host.docker.internal:11434';
+    document.getElementById('auto-scan-with-ai').checked = cfg.settings.auto_scan_with_ai ?? true;
   } catch (e) {
     showToast('無法連線後端', 'error');
   }
@@ -790,8 +791,9 @@ async function saveSettings() {
       ma_long:          parseInt(document.getElementById('ma-long').value),
     },
     settings: {
-      llm_model:  document.getElementById('llm-model').value.trim(),
-      ollama_url: document.getElementById('ollama-url').value.trim(),
+      llm_model:         document.getElementById('llm-model').value.trim(),
+      ollama_url:        document.getElementById('ollama-url').value.trim(),
+      auto_scan_with_ai: document.getElementById('auto-scan-with-ai').checked,
     },
   };
   try {
@@ -983,24 +985,10 @@ async function showScanPage() {
   showPage('scan');
   const el = document.getElementById('scan-content');
   el.innerHTML = `<div style="padding:0 4px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
-      <div>
-        <h2 style="font-size:18px;font-weight:700">🔍 今日訊號掃描</h2>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:4px">
-          條件與自動交易相同 · 買入：RSI≤65 + 今日買訊 · 賣出：近3日賣訊 · 結果自動儲存
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <select id="scan-count" class="form-control" style="width:120px;padding:6px 10px">
-          <option value="50">掃描 50 支</option>
-          <option value="80">掃描 80 支</option>
-          <option value="150" selected>掃描 150 支</option>
-        </select>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
-          <input type="checkbox" id="scan-with-ai" style="width:14px;height:14px">
-          加入 AI 信心分析（較慢）
-        </label>
-        <button class="btn btn-primary" onclick="runScan()">🔍 重新掃描</button>
+    <div style="margin-bottom:20px">
+      <h2 style="font-size:18px;font-weight:700">🔍 今日訊號掃描</h2>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">
+        條件與自動交易相同 · 買入：RSI≤65 + 今日買訊 · 賣出：近3日賣訊 · 系統每小時自動檢查資料並掃描
       </div>
     </div>
     <div id="scan-result">
@@ -1010,18 +998,18 @@ async function showScanPage() {
     </div>
   </div>`;
 
-  // 優先顯示上次的掃描快取
+  // 顯示背景排程自動產生的掃描結果
   try {
     const r = await fetch(`${API}/api/scan/today`);
     const data = await r.json();
     if (data.cached && (data.buy_candidates?.length || data.sell_candidates?.length)) {
-      renderScanResult(data, true);
+      renderScanResult(data);
     } else {
       document.getElementById('scan-result').innerHTML = `
         <div style="text-align:center;padding:60px 0;color:var(--text-muted)">
           <div style="font-size:36px;margin-bottom:12px">📡</div>
           <div style="font-weight:600;margin-bottom:6px">尚無掃描記錄</div>
-          <div style="font-size:12px">點擊「重新掃描」開始分析</div>
+          <div style="font-size:12px">系統會在資料更新後自動掃描，請稍候</div>
         </div>`;
     }
   } catch {
@@ -1030,36 +1018,10 @@ async function showScanPage() {
   }
 }
 
-async function runScan() {
-  const count  = document.getElementById('scan-count')?.value || 80;
-  const withAi = document.getElementById('scan-with-ai')?.checked ?? false;
-  const el = document.getElementById('scan-result');
-  el.innerHTML = `
-    <div style="text-align:center;padding:60px 0">
-      <div class="spinner" style="margin:0 auto 16px"></div>
-      <div style="font-weight:600">掃描中，請稍候...</div>
-      <div style="font-size:12px;color:var(--text-muted);margin-top:6px">
-        正在分析前 ${count} 支股票的技術指標${withAi ? '，並對今日訊號進行 AI 信心分析' : ''}，約需 ${withAi ? '1–3 分鐘' : '20–60 秒'}
-      </div>
-    </div>`;
-  try {
-    const r = await fetch(`${API}/api/scan/today?max_candidates=${count}&with_ai=${withAi}`, { method: 'POST' });
-    if (!r.ok) throw new Error(await r.text());
-    const data = await r.json();
-    renderScanResult(data, false);
-  } catch (e) {
-    el.innerHTML = `<div style="padding:20px;color:var(--danger)">掃描失敗：${e.message}</div>`;
-  }
-}
-
-function renderScanResult(data, fromCache) {
+function renderScanResult(data) {
   const el = document.getElementById('scan-result');
   const { buy_candidates: buys = [], sell_candidates: sells = [],
           scanned = 0, scan_time = '', errors = [] } = data;
-
-  const cacheNote = fromCache
-    ? `<span style="color:#e3b341;font-size:11px">💾 上次儲存結果</span>`
-    : `<span style="color:#3fb950;font-size:11px">✓ 剛完成掃描</span>`;
 
   const statBar = `
     <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:center">
@@ -1076,7 +1038,7 @@ function renderScanResult(data, fromCache) {
         <div style="font-weight:700;font-size:14px;color:#f85149">${sells.length} 支</div></div>
       </div>
       <div style="margin-left:auto;text-align:right;font-size:11px;color:var(--text-muted)">
-        ${cacheNote}<br>掃描時間：${scan_time || '—'}
+        最後掃描時間：${scan_time || '—'}<br>每小時自動檢查資料更新
       </div>
     </div>`;
 
@@ -1205,7 +1167,7 @@ function renderAutoInit() {
     <div class="card">
       <div class="card-header"><div class="card-title">🤖 自動交易系統</div></div>
       <p style="color:var(--text-muted);line-height:1.9;margin-bottom:20px">
-        點擊「早盤掃描」掃描前100大成交量股票，找到買入訊號後<strong>立即買入</strong>（市價成交）。<br>
+        系統每小時自動檢查資料更新，找到買入訊號後<strong>立即買入</strong>（市價成交）。<br>
         同時自動檢查現有持倉：出現賣出訊號、或達到<strong>停利/停損價</strong>時立即賣出。<br>
         此系統與單一股票頁面的「⚡ 自動執行訊號」共用同一個投資組合。
       </p>
@@ -1248,7 +1210,6 @@ function renderAutoDashboard(portfolio, orders, history) {
           </div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-primary" onclick="autoScan()" id="btn-scan">📊 早盤掃描</button>
           <button class="btn btn-outline" onclick="refreshAutoPage()">🔄 更新</button>
           <button class="btn btn-danger" style="font-size:11px" onclick="autoReset()">重置</button>
         </div>
@@ -1314,7 +1275,7 @@ function renderAutoDashboard(portfolio, orders, history) {
             </tr>`).join('')}
           </tbody>
         </table>` :
-        `<p style="color:var(--text-muted);padding:20px 0">目前無持倉。執行「早盤掃描」找買入機會。</p>`}
+        `<p style="color:var(--text-muted);padding:20px 0">目前無持倉。系統會在資料更新後自動掃描並下單。</p>`}
     </div>
 
     <!-- Filled order log -->
@@ -1421,25 +1382,6 @@ async function cancelPosition(ticker, name, refundAmt) {
     await refreshAutoPage();
   } catch (e) {
     showToast('撤銷失敗：' + e.message, 'error');
-  }
-}
-
-async function autoScan() {
-  const btn = document.getElementById('btn-scan');
-  if (btn) { btn.disabled = true; btn.textContent = '掃描中...'; }
-  try {
-    const r = await fetch(`${API}/api/auto/scan?max_candidates=150`, {method:'POST'});
-    const d = await r.json();
-    showToast(
-      `掃描完成：買入 ${d.buy_count} 筆，賣出 ${d.sell_count} 筆，` +
-      `監控 ${d.positions_monitored} 支持倉（可再買 ${d.available_slots ?? 0} 股）`,
-      'success'
-    );
-    await refreshAutoPage();
-  } catch (e) {
-    showToast('掃描失敗：' + e.message, 'error');
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '📊 早盤掃描'; }
   }
 }
 

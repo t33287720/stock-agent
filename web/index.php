@@ -203,6 +203,15 @@
         <p style="font-size:11px;color:var(--text-muted)">
           模型需先在 Ollama 中 pull 完成（例如 <code>docker exec ollama ollama pull qwen2.5:7b</code>）才能使用。
         </p>
+        <div class="form-group" style="margin-top:8px">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="auto-scan-with-ai" style="width:14px;height:14px">
+            自動掃描時同步進行 AI 信心分析
+          </label>
+          <p style="font-size:11px;color:var(--text-muted);margin-top:4px">
+            每小時自動掃描找到今日訊號時，是否同時呼叫 Ollama 產生信心評分與摘要（會增加掃描時間）。
+          </p>
+        </div>
         <div style="margin-top:8px">
           <button class="btn btn-primary" onclick="saveSettings()">💾 儲存設定</button>
         </div>

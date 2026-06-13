@@ -115,6 +115,19 @@ def init_db() -> None:
         position_value NUMERIC(15,2)
     );
 
+    CREATE TABLE IF NOT EXISTS scan_state (
+        id              INTEGER PRIMARY KEY DEFAULT 1,
+        last_scan_date  DATE,
+        last_checked_at TIMESTAMPTZ,
+        CONSTRAINT single_scan_state CHECK (id = 1)
+    );
+
+    CREATE TABLE IF NOT EXISTS scan_results (
+        scan_date  DATE PRIMARY KEY,
+        result     JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     CREATE INDEX IF NOT EXISTS idx_trades_ticker ON trades(ticker);
     CREATE INDEX IF NOT EXISTS idx_trades_date   ON trades(trade_date);
     """
@@ -346,6 +359,76 @@ def load_history() -> list:
                 }
                 for r in cur.fetchall()
             ]
+
+
+# ── Scan state / results ───────────────────────────────────────────────────────
+
+def get_scan_state() -> dict:
+    """Return {'last_scan_date': str|None, 'last_checked_at': str|None}."""
+    with _conn() as c:
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT last_scan_date, last_checked_at FROM scan_state WHERE id = 1")
+            row = cur.fetchone()
+            if not row:
+                return {"last_scan_date": None, "last_checked_at": None}
+            return {
+                "last_scan_date":  str(row["last_scan_date"]) if row["last_scan_date"] else None,
+                "last_checked_at": row["last_checked_at"].isoformat() if row["last_checked_at"] else None,
+            }
+
+
+def update_scan_state(last_scan_date: str | None = None) -> None:
+    """Upsert scan_state. last_checked_at is always set to now(); last_scan_date
+    is only updated when provided."""
+    with _conn() as c:
+        with c.cursor() as cur:
+            if last_scan_date is not None:
+                cur.execute("""
+                    INSERT INTO scan_state (id, last_scan_date, last_checked_at)
+                    VALUES (1, %s, NOW())
+                    ON CONFLICT (id) DO UPDATE SET
+                        last_scan_date  = EXCLUDED.last_scan_date,
+                        last_checked_at = EXCLUDED.last_checked_at
+                """, (last_scan_date,))
+            else:
+                cur.execute("""
+                    INSERT INTO scan_state (id, last_checked_at)
+                    VALUES (1, NOW())
+                    ON CONFLICT (id) DO UPDATE SET
+                        last_checked_at = EXCLUDED.last_checked_at
+                """)
+
+
+def save_scan_result(scan_date: str, result: dict) -> None:
+    """Upsert today's scan result (JSONB) for the given trading day."""
+    with _conn() as c:
+        with c.cursor() as cur:
+            cur.execute("""
+                INSERT INTO scan_results (scan_date, result)
+                VALUES (%s, %s)
+                ON CONFLICT (scan_date) DO UPDATE SET
+                    result     = EXCLUDED.result,
+                    created_at = NOW()
+            """, (scan_date, json.dumps(result, ensure_ascii=False)))
+
+
+def get_latest_scan_result() -> dict | None:
+    """Return the most recent scan_results row's `result` JSON, or None."""
+    with _conn() as c:
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT scan_date, result, created_at
+                FROM   scan_results
+                ORDER  BY scan_date DESC
+                LIMIT  1
+            """)
+            row = cur.fetchone()
+            if not row:
+                return None
+            result = dict(row["result"])
+            result["scan_date"] = str(row["scan_date"])
+            result["created_at"] = row["created_at"].isoformat()
+            return result
 
 
 # ── Migration from JSON ────────────────────────────────────────────────────────

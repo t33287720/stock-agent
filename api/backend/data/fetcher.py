@@ -66,7 +66,7 @@ def _write_cache(key: str, data) -> None:
 
 # ── stock list ─────────────────────────────────────────────────────────────────
 
-def _last_trading_day_str() -> str:
+def last_trading_day_str() -> str:
     """Return the most recent trading day as YYYY-MM-DD (skips weekends only)."""
     today = datetime.today()
     offset = {5: 1, 6: 2}.get(today.weekday(), 0)
@@ -83,7 +83,7 @@ def get_latest_close(ticker: str) -> tuple[float, str]:
     Cache key includes the trading day → auto-invalidates each new day.
     Falls back to yesterday when today's close isn't published yet.
     """
-    ltd = _last_trading_day_str()
+    ltd = last_trading_day_str()
     cache_key = f"close_{ticker}_{ltd}"
     cached = _read_cache(cache_key)
     if cached:
@@ -106,7 +106,7 @@ def get_latest_close(ticker: str) -> tuple[float, str]:
 def get_top100_stocks() -> list[dict]:
     """Return top-300 Taiwan stocks sorted by daily 張數 (lots traded)."""
     # Use date-keyed cache so it auto-invalidates on each new trading day
-    cache_key = f"top100_{_last_trading_day_str()}"
+    cache_key = f"top100_{last_trading_day_str()}"
     cached = _read_cache(cache_key)
     if cached:
         return cached
@@ -176,7 +176,7 @@ def _fallback_stock_list() -> list[dict]:
 def get_stock_history(ticker: str, days: int = 365) -> pd.DataFrame:
     """Fetch OHLCV history. Primary: twstock (direct TWSE/TPEX). Fallback: yfinance."""
     # Cache key includes trading day so it auto-invalidates each new trading day.
-    cache_key = f"hist_{ticker}_{days}_{_last_trading_day_str()}"
+    cache_key = f"hist_{ticker}_{days}_{last_trading_day_str()}"
     cached = _read_cache(cache_key)
     if cached:
         df = pd.DataFrame(cached)

@@ -4,15 +4,13 @@
 買入候選：最新一根 K 棒 should_buy() == True
 賣出候選：should_sell() == True（最近 3 根內最新訊號為 -1）
 """
-import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from pathlib import Path
-
-_CACHE_FILE = Path(__file__).parent.parent.parent / "cache" / "scan_today.json"
 
 from backend.data.fetcher import get_stock_history, get_top100_stocks
+from backend.data.news import get_stock_news
 from backend.analysis.technical import calculate_indicators
+from backend.llm.analysis import analyze_scan_candidate
 from backend.strategy.signals import generate_signals, should_buy, should_sell
 
 
@@ -123,20 +121,40 @@ def scan_today(max_candidates: int = 80) -> dict:
     }
 
 
-def save_scan(result: dict) -> None:
-    _CACHE_FILE.parent.mkdir(exist_ok=True)
-    _CACHE_FILE.write_text(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+def enrich_with_ai(result: dict) -> dict:
+    """為今日訊號候選股加上 AI 信心評分（含新聞佐證），僅處理 is_today=True 的候選。"""
+    candidates = result.get("buy_candidates", []) + result.get("sell_candidates", [])
 
+    def _enrich_one(c):
+        if not c.get("is_today"):
+            c["ai_confidence"] = None
+            c["ai_summary"] = None
+            c["ai_has_news"] = None
+            return
+        try:
+            name = c.get("name", c["ticker"])
+            news = get_stock_news(c["ticker"], name, limit=3)
+            technical_snapshot = {
+                "rsi": c.get("rsi"),
+                "macd_bullish": c.get("macd_bullish"),
+                "k": c.get("k"),
+                "d": c.get("d"),
+                "golden_cross": c.get("golden_cross"),
+            }
+            ai = analyze_scan_candidate(c["ticker"], name, c.get("signal_reason", ""), technical_snapshot, news)
+            c["ai_confidence"] = ai.get("ai_confidence")
+            c["ai_summary"] = ai.get("ai_summary")
+            c["ai_has_news"] = ai.get("has_news")
+        except Exception as e:
+            c["ai_confidence"] = None
+            c["ai_summary"] = f"AI 分析失敗: {str(e)[:40]}"
+            c["ai_has_news"] = None
 
-def load_scan() -> dict | None:
-    if not _CACHE_FILE.exists():
-        return None
-    try:
-        data = json.loads(_CACHE_FILE.read_text())
-        data["cached"] = True
-        return data
-    except Exception:
-        return None
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        list(ex.map(_enrich_one, candidates))
+
+    result["ai_enriched"] = True
+    return result
 
 
 def _safe_float(val, default: float = 0.0) -> float:

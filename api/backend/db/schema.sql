@@ -53,6 +53,21 @@ CREATE TABLE IF NOT EXISTS equity_history (
     position_value NUMERIC(15,2)                    -- 持股市值
 );
 
+-- 自動掃描狀態（永遠只有一列，id = 1）
+CREATE TABLE IF NOT EXISTS scan_state (
+    id              INTEGER PRIMARY KEY DEFAULT 1,
+    last_scan_date  DATE,                            -- 上次掃描對應的交易日
+    last_checked_at TIMESTAMPTZ,                     -- 上次檢查時間
+    CONSTRAINT single_scan_state CHECK (id = 1)
+);
+
+-- 每日今日訊號掃描結果（背景排程寫入）
+CREATE TABLE IF NOT EXISTS scan_results (
+    scan_date  DATE PRIMARY KEY,                     -- 掃描對應的交易日
+    result     JSONB NOT NULL,                       -- scan_today() 回傳的完整結果
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- 查詢用索引
 CREATE INDEX IF NOT EXISTS idx_trades_ticker ON trades(ticker);
 CREATE INDEX IF NOT EXISTS idx_trades_date   ON trades(trade_date);
