@@ -39,6 +39,7 @@ from backend.strategy.auto_trade import (
     cancel_position as cancel_auto_position,
 )
 from backend.strategy.full_backtest import run_full_portfolio_backtest
+from backend.strategy.ai_batch import run_batch_ai_analysis
 
 app = FastAPI(title="台股 AI 分析系統", version="1.0.0")
 
@@ -301,6 +302,9 @@ async def get_scan_cache():
     return result
 
 
+_ai_retry_running = False
+
+
 @app.get("/api/scan/ai-progress")
 async def get_scan_ai_progress():
     result = await asyncio.to_thread(db.get_latest_scan_result)
@@ -309,7 +313,36 @@ async def get_scan_ai_progress():
     scan_date = result.get("scan_date")
     total = len(result.get("all_candidates", []))
     ai_results = await asyncio.to_thread(db.get_stock_ai_results_for_date, scan_date)
-    return {"scan_date": scan_date, "total": total, "done": len(ai_results)}
+    done = sum(1 for r in ai_results.values() if not r.get("error"))
+    return {"scan_date": scan_date, "total": total, "done": done, "running": _ai_retry_running}
+
+
+@app.post("/api/scan/ai-retry")
+async def retry_scan_ai_analysis():
+    """手動重新執行今日掃描候選股的 AI 分析（跳過已成功項目，重試先前因 LLM 無回應等失敗的項目）。"""
+    global _ai_retry_running
+    if _ai_retry_running:
+        return {"status": "running"}
+
+    result = await asyncio.to_thread(db.get_latest_scan_result)
+    if result is None:
+        raise HTTPException(400, "尚無掃描結果")
+
+    all_candidates = result.get("all_candidates", [])
+    scan_date = result.get("scan_date")
+
+    async def _run():
+        global _ai_retry_running
+        _ai_retry_running = True
+        try:
+            await asyncio.to_thread(run_batch_ai_analysis, all_candidates, scan_date)
+        except Exception:
+            logging.getLogger(__name__).exception("[ai-retry] 重新分析失敗")
+        finally:
+            _ai_retry_running = False
+
+    asyncio.create_task(_run())
+    return {"status": "started", "total": len(all_candidates)}
 
 
 # ── 設定 ─────────────────────────────────────────────────────────────────────────

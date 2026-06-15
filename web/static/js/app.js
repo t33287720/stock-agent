@@ -1135,7 +1135,12 @@ function renderScanResult(data, progress) {
     ? `<div style="background:var(--surface2);border-radius:8px;padding:8px 14px;display:flex;gap:8px;align-items:center">
         <span>🤖</span><div><div style="font-size:10px;color:var(--text-muted)">AI 分析進度</div>
         <div style="font-weight:700;font-size:14px">${progress.done} / ${progress.total}</div></div>
-      </div>`
+      </div>
+      <button id="btn-ai-retry" onclick="retryAiAnalysis()" ${progress.running ? 'disabled' : ''}
+        style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);
+        color:var(--text-secondary);cursor:${progress.running ? 'default' : 'pointer'};font-size:12px">
+        ${progress.running ? '⏳ 重新分析中...' : '🔄 重新分析失敗項目'}
+      </button>`
     : '';
 
   const statBar = `
@@ -1201,6 +1206,43 @@ function renderScanResult(data, progress) {
             '#1a0808','#b91c1c','#f85149') +
     (errors.length ? `<div style="font-size:11px;color:var(--text-muted);margin-top:8px">
       ⚠ ${errors.length} 筆異常：${errors.join('；')}</div>` : '');
+
+  if (progress?.running) _pollAiRetry();
+}
+
+let _aiRetryPoll = null;
+
+async function retryAiAnalysis() {
+  const btn = document.getElementById('btn-ai-retry');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 重新分析中...'; }
+  try {
+    await fetch(`${API}/api/scan/ai-retry`, { method: 'POST' });
+  } catch {}
+  _pollAiRetry();
+}
+
+function _pollAiRetry() {
+  if (_aiRetryPoll) return;
+  _aiRetryPoll = setInterval(async () => {
+    if (!document.getElementById('scan-result')) {
+      clearInterval(_aiRetryPoll);
+      _aiRetryPoll = null;
+      return;
+    }
+    try {
+      const [r, progR] = await Promise.all([
+        fetch(`${API}/api/scan/today`),
+        fetch(`${API}/api/scan/ai-progress`),
+      ]);
+      const data = await r.json();
+      const progress = await progR.json();
+      if (!progress.running) {
+        clearInterval(_aiRetryPoll);
+        _aiRetryPoll = null;
+      }
+      renderScanResult(data, progress);
+    } catch {}
+  }, 5000);
 }
 
 function scanRow(s, type, aiEnriched) {

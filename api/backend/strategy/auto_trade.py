@@ -209,13 +209,20 @@ def morning_scan(max_candidates: int = 100) -> dict:
             continue
         df, price = pos_data[ticker]
         recent = list(df.iloc[-3:].to_dict("records")) if len(df) >= 3 else list(df.to_dict("records"))
+        ai = ai_results.get(ticker)
+        ai_ok = bool(ai) and not ai.get("error")
+
         exit_price, exit_reason = check_exit(pos, price, recent)
 
-        if not exit_price:
-            ai = ai_results.get(ticker)
-            if ai and ai.get("verdict") == "偏空" and (ai.get("confidence") or 0) >= ai_sell_min:
+        if not exit_price and ai_ok:
+            if ai.get("verdict") == "偏空" and (ai.get("confidence") or 0) >= ai_sell_min:
                 exit_price = price
                 exit_reason = f"AI研判偏空（信心{ai.get('confidence')}%）：{(ai.get('summary') or '')[:40]}"
+
+        if exit_price and not ai_ok:
+            # 尚無有效 AI 判斷，風控訊號暫緩執行，待下次掃描有 AI 結果再賣出
+            errors.append(f"{ticker}: 觸發{exit_reason}，但尚無有效AI判斷，暫不賣出")
+            exit_price, exit_reason = None, None
 
         if exit_price:
             if db.sold_today(ticker):
@@ -297,7 +304,11 @@ def morning_scan(max_candidates: int = 100) -> dict:
             continue
 
         ai = ai_results.get(ticker)
-        if ai and (ai.get("verdict") == "偏空" or (ai.get("confidence") or 0) < ai_buy_min):
+        ai_ok = bool(ai) and not ai.get("error")
+        if not ai_ok:
+            errors.append(f"{ticker}: 尚無有效AI判斷，暫不買入")
+            continue
+        if ai.get("verdict") == "偏空" or (ai.get("confidence") or 0) < ai_buy_min:
             errors.append(f"{ticker}: AI過濾（{ai.get('verdict')}，信心{ai.get('confidence')}%），略過買入")
             continue
 

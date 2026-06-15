@@ -19,14 +19,16 @@ logger = logging.getLogger(__name__)
 def run_batch_ai_analysis(all_candidates: list[dict], scan_date: str) -> dict:
     """對 all_candidates 逐一執行完整 ReAct AI 分析，存入 stock_ai_results。
 
-    已有當日結果者跳過 → 容器重啟後可從中斷處繼續。
+    已有當日成功結果者跳過 → 容器重啟後可從中斷處繼續；
+    先前因本機 LLM 無回應等錯誤而失敗的項目會重新分析。
     """
     done = db.get_stock_ai_results_for_date(scan_date)
+    skipped = sum(1 for r in done.values() if not r.get("error"))
     analyzed = failed = 0
 
     for c in all_candidates:
         ticker = c["ticker"]
-        if ticker in done:
+        if ticker in done and not done[ticker].get("error"):
             continue
         try:
             fund = get_fundamental(ticker)
@@ -48,5 +50,5 @@ def run_batch_ai_analysis(all_candidates: list[dict], scan_date: str) -> dict:
             logger.exception("[ai_batch] %s 分析失敗", ticker)
             failed += 1
 
-    logger.info("[ai_batch] 完成：新增 %d、失敗 %d、跳過(已完成) %d", analyzed, failed, len(done))
-    return {"analyzed": analyzed, "failed": failed, "skipped": len(done)}
+    logger.info("[ai_batch] 完成：新增 %d、失敗 %d、跳過(已完成) %d", analyzed, failed, skipped)
+    return {"analyzed": analyzed, "failed": failed, "skipped": skipped}
