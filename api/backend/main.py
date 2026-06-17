@@ -328,8 +328,30 @@ async def retry_scan_ai_analysis():
     if result is None:
         raise HTTPException(400, "尚無掃描結果")
 
-    all_candidates = result.get("all_candidates", [])
+    all_candidates = list(result.get("all_candidates", []))
     scan_date = result.get("scan_date")
+
+    # 補充持倉中不在掃描名單的股票
+    from backend.data.fetcher import get_stock_history
+    from backend.analysis.technical import calculate_indicators, get_indicator_summary
+    scanned_tickers = {c["ticker"] for c in all_candidates}
+    portfolio = await asyncio.to_thread(db.load_portfolio)
+    if portfolio:
+        for ticker, pos in portfolio.get("positions", {}).items():
+            if ticker in scanned_tickers:
+                continue
+            try:
+                df = await asyncio.to_thread(get_stock_history, ticker, 90)
+                if df.empty or len(df) < 20:
+                    continue
+                df = calculate_indicators(df)
+                all_candidates.append({
+                    "ticker":    ticker,
+                    "name":      pos.get("name", ticker),
+                    "technical": get_indicator_summary(df),
+                })
+            except Exception:
+                pass
 
     async def _run():
         global _ai_retry_running
