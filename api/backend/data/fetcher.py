@@ -6,6 +6,7 @@ Sources:
   - TWSE Open API  → stock list, P/E, P/B, dividend yield
   - Cache          → JSON files under /cache/ (TTL = cache_hours)
 """
+import difflib
 import json
 import time
 from datetime import datetime, timedelta
@@ -193,6 +194,33 @@ def _load_company_name_map() -> dict[str, str]:
 def get_company_name(ticker: str) -> Optional[str]:
     """回傳台股中文公司簡稱（例：2330 → 台積電），查無資料則回傳 None。"""
     return _load_company_name_map().get(ticker)
+
+
+def search_tickers(query: str, limit: int = 5) -> list[dict]:
+    """依公司名稱片段或股票代號，從代號對照表中找出候選 {ticker, name}（供聊天功能解析使用者提到的股票）。"""
+    query = query.strip()
+    if not query:
+        return []
+    name_map = _load_company_name_map()
+
+    if query.upper() in name_map:
+        return [{"ticker": query.upper(), "name": name_map[query.upper()]}]
+
+    matches = [
+        {"ticker": t, "name": n}
+        for t, n in name_map.items()
+        if query in n or n in query
+    ]
+
+    if not matches:
+        # 找不到完全子字串匹配時的容錯：LLM 解析問題時偶爾會把繁體字打成簡體或形近字
+        # （例如「英業達」→「英業达」），改用模糊比對抓回最相似的公司名稱。
+        close = difflib.get_close_matches(query, name_map.values(), n=limit, cutoff=0.6)
+        matches = [{"ticker": t, "name": n} for t, n in name_map.items() if n in close]
+
+    # 完全相同或名稱較短（較精確）的排前面
+    matches.sort(key=lambda m: (m["name"] != query, len(m["name"])))
+    return matches[:limit]
 
 
 def _fallback_stock_list() -> list[dict]:

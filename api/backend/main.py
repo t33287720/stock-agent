@@ -29,6 +29,7 @@ from backend.llm.analysis import (
     analyze_stock_stream,
     get_cached_analysis, save_analysis_cache,
 )
+from backend.llm.chat import chat_stream
 from backend.analysis.technical import calculate_indicators, get_indicator_summary
 from backend.scheduler import scan_loop
 from backend.utils import TAIPEI, is_trading_day
@@ -80,6 +81,10 @@ class FullBacktestBody(BaseModel):
 class AutoTradeBody(BaseModel):
     ticker: str
     action: str   # "auto" | "buy" | "sell"
+
+class ChatBody(BaseModel):
+    history: list[dict] = []
+    message: str
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────────
@@ -200,6 +205,18 @@ async def stock_ai_analysis(ticker: str, force: bool = False):
                 event = {"type": "result", "result": {**result, "from_cache": False}}
             yield json.dumps(event, ensure_ascii=False) + "\n"
 
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")
+
+
+# ── 問股票聊天 ────────────────────────────────────────────────────────────────────
+
+@app.post("/api/chat")
+async def chat(body: ChatBody):
+    """以 NDJSON 串流回傳聊天問答過程：先解析股票、抓資料/搜尋，最後給出回覆。"""
+    async def event_stream():
+        gen = chat_stream(body.history, body.message)
+        async for event in iterate_in_threadpool(gen):
+            yield json.dumps(event, ensure_ascii=False) + "\n"
     return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 
 

@@ -135,7 +135,7 @@ def _format_extra_search_block(round_no: int, query: str, results: list[dict]) -
 
 # ── 個股 AI 分析 ───────────────────────────────────────────────────────────────────
 
-def _build_stock_context(ticker: str, name: str, technical: dict, fundamental: dict, news: list[dict]) -> str:
+def build_stock_context(ticker: str, name: str, technical: dict, fundamental: dict, news: list[dict]) -> str:
     t = technical or {}
     f = fundamental or {}
 
@@ -176,7 +176,7 @@ def analyze_stock_stream(ticker: str, name: str, technical: dict, fundamental: d
     - {"type": "step_done",  "step": {label, system, prompt, response}}：該步驟完成
     最後 yield {"type": "result", "result": {...}}（與舊版 analyze_stock 回傳格式相同）。
     """
-    context = _build_stock_context(ticker, name, technical, fundamental, news)
+    context = build_stock_context(ticker, name, technical, fundamental, news)
     trace = []
     extra_searches = []
     query_counts: dict[str, int] = {}

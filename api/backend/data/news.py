@@ -96,12 +96,21 @@ def _searxng_search(query: str, limit: int, page: int = 1) -> list[dict]:
 
 
 def get_stock_news(ticker: str, name: str, limit: int = 10) -> list[dict]:
-    """搜尋個股相關新聞，回傳 [{title, url, source, date, body}, ...]。"""
+    """搜尋個股相關新聞，回傳 [{title, url, source, date, body}, ...]。
+
+    SearXNG 的「一般」分類搜尋常會挾帶其他公司的報價頁、不相關公告等雜訊，
+    故額外多抓一些結果，再過濾成標題或內文有實際提到公司名稱／代號的才留下。
+    """
     cached = _read_news_cache(ticker)
     if cached is not None:
         return cached
 
-    results = _searxng_search(f"{name} {ticker} 股票 新聞", limit)
+    raw = _searxng_search(f"{name} {ticker} 股票 新聞", limit * 3)
+    results = [
+        r for r in raw
+        if name in ((r.get("title") or "") + (r.get("body") or ""))
+        or ticker in ((r.get("title") or "") + (r.get("body") or ""))
+    ][:limit]
     _write_news_cache(ticker, results)
     return results
 

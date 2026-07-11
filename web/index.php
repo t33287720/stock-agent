@@ -24,6 +24,12 @@
         </svg>
         首頁
       </button>
+      <button class="nav-item" data-page="chat" onclick="showChatPage()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+        </svg>
+        問股票
+      </button>
       <button class="nav-item" data-page="settings" onclick="showSettings()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
@@ -117,6 +123,22 @@
         </div>
         <div id="run-log-list">
           <div class="loading"><div class="spinner"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat page -->
+    <div id="page-chat" style="display:none">
+      <div class="card" style="display:flex;flex-direction:column;height:calc(100vh - 96px);padding:0;overflow:hidden">
+        <div class="card-header" style="padding:16px 20px;flex-shrink:0">
+          <div class="card-title">💬 問股票</div>
+          <button class="btn btn-outline" style="font-size:11px" onclick="clearChat()">清空對話</button>
+        </div>
+        <div id="chat-messages" class="chat-messages"></div>
+        <div class="chat-input-row">
+          <textarea id="chat-input" class="form-control" rows="1" placeholder="輸入問題，例如：台積電最近怎麼樣？"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMessage();}"></textarea>
+          <button class="btn btn-primary" onclick="sendChatMessage()">送出</button>
         </div>
       </div>
     </div>

@@ -186,6 +186,59 @@ body {
 .run-dot.green  { background: var(--success); border-color: var(--success); }
 .run-dot.red    { background: var(--danger);  border-color: var(--danger); }
 
+/* Chat (問股票) */
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.chat-bubble {
+  max-width: 75%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.7;
+  word-break: break-word;
+}
+.chat-bubble.user {
+  white-space: pre-wrap;
+  align-self: flex-end;
+  background: var(--primary);
+  color: #fff;
+  border-bottom-right-radius: 2px;
+}
+.chat-bubble.assistant {
+  align-self: flex-start;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 2px;
+}
+.chat-turn { align-self: flex-start; max-width: 100%; }
+.chat-steps { display: flex; flex-direction: column; gap: 4px; }
+.chat-step {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-size: 11px;
+}
+.chat-step-label { font-weight: 600; margin-bottom: 2px; color: var(--text-muted); }
+.chat-input-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.chat-input-row textarea {
+  resize: none;
+  font-family: inherit;
+}
+
 /* Tabs */
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
 .tab {
