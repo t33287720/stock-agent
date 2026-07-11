@@ -109,6 +109,16 @@
           ⚠️ 本系統為學術研究用途，所有建議僅供參考，不構成投資建議。投資有風險，入市需謹慎。
         </p>
       </div>
+
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <div class="card-title">📅 系統執行狀況</div>
+          <div style="font-size:11px;color:var(--text-muted)">最近 30 天 · 每小時自動檢查</div>
+        </div>
+        <div id="run-log-list">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+      </div>
     </div>
 
     <!-- Full backtest page -->

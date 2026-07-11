@@ -4,6 +4,7 @@
 買入候選：最新一根 K 棒 should_buy() == True
 賣出候選：should_sell() == True（最近 3 根內最新訊號為 -1）
 """
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
@@ -43,6 +44,7 @@ def scan_today(max_candidates: int = 80) -> dict:
     all_candidates:  list[dict] = []
     errors: list[str] = []
     scanned = 0
+    date_counter: Counter = Counter()
 
     for ticker, s, df_or_err in fetched:
         if df_or_err is None:
@@ -54,6 +56,7 @@ def scan_today(max_candidates: int = 80) -> dict:
         df          = df_or_err
         last_row    = df.iloc[-1]
         latest_date = str(df.index[-1])[:10]
+        date_counter[latest_date] += 1
 
         all_candidates.append({
             "ticker":    ticker,
@@ -124,6 +127,7 @@ def scan_today(max_candidates: int = 80) -> dict:
         "sell_candidates": sell_candidates,
         "all_candidates":  all_candidates,
         "scan_time":       datetime.now(TAIPEI).strftime("%Y-%m-%d %H:%M"),
+        "data_date":       date_counter.most_common(1)[0][0] if date_counter else None,
         "errors":          errors[:5],
     }
 

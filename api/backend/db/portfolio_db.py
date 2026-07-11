@@ -135,6 +135,27 @@ def init_db() -> None:
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS daily_run_log (
+        run_date         DATE PRIMARY KEY,
+        data_status      VARCHAR(10),
+        data_date        DATE,
+        scan_status      VARCHAR(10),
+        scan_started_at  TIMESTAMPTZ,
+        scan_done_at     TIMESTAMPTZ,
+        scan_error       TEXT,
+        ai_status        VARCHAR(10),
+        ai_started_at    TIMESTAMPTZ,
+        ai_done_at       TIMESTAMPTZ,
+        ai_done_count    INTEGER,
+        ai_total_count   INTEGER,
+        ai_error         TEXT,
+        trade_status     VARCHAR(10),
+        trade_started_at TIMESTAMPTZ,
+        trade_done_at    TIMESTAMPTZ,
+        trade_summary    JSONB,
+        trade_error      TEXT
+    );
+
     CREATE INDEX IF NOT EXISTS idx_trades_ticker ON trades(ticker);
     CREATE INDEX IF NOT EXISTS idx_trades_date   ON trades(trade_date);
     CREATE INDEX IF NOT EXISTS idx_stock_ai_results_scan_date ON stock_ai_results(scan_date);
@@ -437,6 +458,109 @@ def get_latest_scan_result() -> dict | None:
             result["scan_date"] = str(row["scan_date"])
             result["created_at"] = row["created_at"].isoformat()
             return result
+
+
+# ── Daily run log (首頁執行狀況列表：資料新鮮度／掃描／AI／自動交易) ────────────
+
+_RUN_LOG_PHASES = ("scan", "ai", "trade")
+
+
+def start_phase(run_date: str, phase: str) -> None:
+    """Mark a phase ('scan'|'ai'|'trade') as running for run_date (upsert)."""
+    if phase not in _RUN_LOG_PHASES:
+        raise ValueError(f"unknown phase {phase!r}")
+    status_col, started_col = f"{phase}_status", f"{phase}_started_at"
+    with _conn() as c:
+        with c.cursor() as cur:
+            cur.execute(f"""
+                INSERT INTO daily_run_log (run_date, {status_col}, {started_col})
+                VALUES (%s, 'running', NOW())
+                ON CONFLICT (run_date) DO UPDATE SET
+                    {status_col}  = 'running',
+                    {started_col} = NOW()
+            """, (run_date,))
+
+
+def complete_scan(run_date: str, status: str, error: str | None = None) -> None:
+    with _conn() as c:
+        with c.cursor() as cur:
+            cur.execute("""
+                INSERT INTO daily_run_log (run_date, scan_status, scan_done_at, scan_error)
+                VALUES (%s, %s, NOW(), %s)
+                ON CONFLICT (run_date) DO UPDATE SET
+                    scan_status  = EXCLUDED.scan_status,
+                    scan_done_at = NOW(),
+                    scan_error   = EXCLUDED.scan_error
+            """, (run_date, status, error))
+
+
+def complete_ai(run_date: str, status: str, done_count: int | None = None,
+                 total_count: int | None = None, error: str | None = None) -> None:
+    with _conn() as c:
+        with c.cursor() as cur:
+            cur.execute("""
+                INSERT INTO daily_run_log
+                    (run_date, ai_status, ai_done_at, ai_done_count, ai_total_count, ai_error)
+                VALUES (%s, %s, NOW(), %s, %s, %s)
+                ON CONFLICT (run_date) DO UPDATE SET
+                    ai_status      = EXCLUDED.ai_status,
+                    ai_done_at     = NOW(),
+                    ai_done_count  = EXCLUDED.ai_done_count,
+                    ai_total_count = EXCLUDED.ai_total_count,
+                    ai_error       = EXCLUDED.ai_error
+            """, (run_date, status, done_count, total_count, error))
+
+
+def complete_trade(run_date: str, status: str, summary: dict | None = None,
+                    error: str | None = None) -> None:
+    with _conn() as c:
+        with c.cursor() as cur:
+            cur.execute("""
+                INSERT INTO daily_run_log (run_date, trade_status, trade_done_at, trade_summary, trade_error)
+                VALUES (%s, %s, NOW(), %s, %s)
+                ON CONFLICT (run_date) DO UPDATE SET
+                    trade_status  = EXCLUDED.trade_status,
+                    trade_done_at = NOW(),
+                    trade_summary = EXCLUDED.trade_summary,
+                    trade_error   = EXCLUDED.trade_error
+            """, (run_date, status, json.dumps(summary, ensure_ascii=False) if summary is not None else None, error))
+
+
+def set_data_status(run_date: str, data_date: str | None, status: str) -> None:
+    with _conn() as c:
+        with c.cursor() as cur:
+            cur.execute("""
+                INSERT INTO daily_run_log (run_date, data_status, data_date)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (run_date) DO UPDATE SET
+                    data_status = EXCLUDED.data_status,
+                    data_date   = EXCLUDED.data_date
+            """, (run_date, status, data_date))
+
+
+def get_run_log(days: int = 30) -> list[dict]:
+    """Return daily_run_log rows for the last `days` calendar days, newest first."""
+    with _conn() as c:
+        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT * FROM daily_run_log
+                WHERE run_date >= CURRENT_DATE - %s::int
+                ORDER BY run_date DESC
+            """, (days,))
+            rows = cur.fetchall()
+
+    out = []
+    for r in rows:
+        d = dict(r)
+        for key in ("run_date", "data_date"):
+            if d.get(key) is not None:
+                d[key] = str(d[key])
+        for key in ("scan_started_at", "scan_done_at", "ai_started_at", "ai_done_at",
+                    "trade_started_at", "trade_done_at"):
+            if d.get(key) is not None:
+                d[key] = d[key].isoformat()
+        out.append(d)
+    return out
 
 
 # ── Stock AI results (批次 ReAct 分析) ─────────────────────────────────────────

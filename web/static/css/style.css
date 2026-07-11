@@ -159,6 +159,33 @@ body {
 .signal-dot.buy { background: var(--success); }
 .signal-dot.sell { background: var(--danger); }
 
+/* Run log (首頁執行狀況列表) */
+.run-log-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.run-log-row:last-child { border-bottom: none; }
+.run-log-row.muted { opacity: .4; }
+.run-log-date { width: 92px; flex-shrink: 0; color: var(--text-muted); }
+.run-log-phases { display: flex; gap: 18px; flex: 1; }
+.run-log-phase { display: flex; align-items: center; gap: 6px; }
+.run-log-phase .phase-label { color: var(--text-muted); font-size: 11px; }
+.run-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  background: transparent;
+  border: 2px solid var(--border);
+}
+.run-dot.gray   { background: transparent; border-color: var(--border); }
+.run-dot.yellow { background: var(--warning); border-color: var(--warning); }
+.run-dot.green  { background: var(--success); border-color: var(--success); }
+.run-dot.red    { background: var(--danger);  border-color: var(--danger); }
+
 /* Tabs */
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
 .tab {

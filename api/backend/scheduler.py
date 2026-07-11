@@ -11,7 +11,7 @@ from backend.data.fetcher import last_trading_day_str, get_stock_history
 from backend.analysis.technical import calculate_indicators, get_indicator_summary
 from backend.db import portfolio_db as db
 from backend.strategy.ai_batch import run_batch_ai_analysis
-from backend.strategy.auto_trade import morning_scan
+from backend.strategy.auto_trade import morning_scan, auto_portfolio_summary
 from backend.strategy.scanner import scan_today
 
 logger = logging.getLogger(__name__)
@@ -31,11 +31,20 @@ def run_scan_cycle() -> None:
 
     logger.info("[scheduler] 偵測到新交易日 %s，開始自動掃描", current)
 
-    result = scan_today(max_candidates=SCAN_MAX_CANDIDATES)
-    db.save_scan_result(current, result)
+    db.start_phase(current, "scan")
+    try:
+        result = scan_today(max_candidates=SCAN_MAX_CANDIDATES)
+        db.save_scan_result(current, result)
+        data_date = result.get("data_date")
+        db.set_data_status(current, data_date, "ok" if data_date == current else "stale")
+        db.complete_scan(current, "done")
+    except Exception as e:
+        db.complete_scan(current, "error", error=str(e)[:300])
+        raise
 
     cfg = load_config()
     if cfg.get("settings", {}).get("auto_scan_with_ai", True):
+        db.start_phase(current, "ai")
         try:
             all_candidates = list(result.get("all_candidates", []))
             scanned_tickers = {c["ticker"] for c in all_candidates}
@@ -60,15 +69,33 @@ def run_scan_cycle() -> None:
                     except Exception:
                         logger.warning("[scheduler] 無法取得持倉 %s 技術資料，略過", ticker)
 
-            run_batch_ai_analysis(all_candidates, current)
+            ai_result = run_batch_ai_analysis(all_candidates, current)
+            db.complete_ai(current, "done",
+                            done_count=ai_result["analyzed"] + ai_result["skipped"],
+                            total_count=len(all_candidates))
         except Exception:
             logger.exception("[scheduler] AI 批次分析失敗")
+            db.complete_ai(current, "error", error="AI批次分析失敗")
 
     if db.load_portfolio():
+        db.start_phase(current, "trade")
         try:
-            morning_scan(max_candidates=SCAN_MAX_CANDIDATES)
+            trade_result = morning_scan(max_candidates=SCAN_MAX_CANDIDATES)
+            summary = auto_portfolio_summary()
+            db.append_equity({
+                "date":           current,
+                "equity":         summary["total_value"],
+                "cash":           summary["cash"],
+                "position_value": summary["position_value"],
+            })
+            db.complete_trade(current, "done", summary={
+                "buy_count":  trade_result.get("buy_count"),
+                "sell_count": trade_result.get("sell_count"),
+                "errors":     trade_result.get("errors", []),
+            })
         except Exception:
             logger.exception("[scheduler] 早盤掃描失敗")
+            db.complete_trade(current, "error", error="早盤掃描失敗")
 
     db.update_scan_state(current)
     logger.info("[scheduler] 自動掃描完成")

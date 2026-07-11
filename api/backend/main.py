@@ -7,7 +7,7 @@ import json
 import logging
 import math
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -31,7 +31,7 @@ from backend.llm.analysis import (
 )
 from backend.analysis.technical import calculate_indicators, get_indicator_summary
 from backend.scheduler import scan_loop
-from backend.utils import TAIPEI
+from backend.utils import TAIPEI, is_trading_day
 from backend.strategy.signals import generate_signals, run_backtest
 from backend.strategy.auto_trade import (
     init_auto_portfolio, execute_trade,
@@ -300,6 +300,34 @@ async def get_scan_cache():
 
     result.pop("all_candidates", None)
     return result
+
+
+@app.get("/api/scan/calendar")
+async def get_scan_calendar(days: int = 30):
+    """首頁執行狀況列表：每天的資料新鮮度／今日訊號掃描／AI批次分析／自動交易 狀態。"""
+    rows = await asyncio.to_thread(db.get_run_log, days)
+    row_map = {r["run_date"]: r for r in rows}
+    today = datetime.now(TAIPEI).date()
+    out = []
+    for i in range(days):
+        d = today - timedelta(days=i)
+        ds = d.strftime("%Y-%m-%d")
+        r = row_map.get(ds, {})
+        out.append({
+            "date":           ds,
+            "weekday":        "一二三四五六日"[d.weekday()],
+            "is_trading_day": is_trading_day(d),
+            "data":  {"status": r.get("data_status"), "data_date": r.get("data_date")},
+            "scan":  {"status": r.get("scan_status"), "started_at": r.get("scan_started_at"),
+                      "done_at": r.get("scan_done_at"), "error": r.get("scan_error")},
+            "ai":    {"status": r.get("ai_status"), "started_at": r.get("ai_started_at"),
+                      "done_at": r.get("ai_done_at"), "done_count": r.get("ai_done_count"),
+                      "total_count": r.get("ai_total_count"), "error": r.get("ai_error")},
+            "trade": {"status": r.get("trade_status"), "started_at": r.get("trade_started_at"),
+                      "done_at": r.get("trade_done_at"), "summary": r.get("trade_summary"),
+                      "error": r.get("trade_error")},
+        })
+    return {"days": out}
 
 
 _ai_retry_running = False

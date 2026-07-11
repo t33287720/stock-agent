@@ -49,6 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadStockList();
   setupSearch();
   showPage('welcome');
+  loadRunLog();
 });
 
 // ── Stock list ────────────────────────────────────────────────────────────────
@@ -91,6 +92,90 @@ function setupSearch() {
       el.style.display = match ? '' : 'none';
     });
   });
+}
+
+// ── Run log (首頁執行狀況列表) ──────────────────────────────────────────────────
+async function loadRunLog() {
+  const el = document.getElementById('run-log-list');
+  if (!el) return;
+  try {
+    const r = await fetch(`${API}/api/scan/calendar?days=30`);
+    const data = await r.json();
+    renderRunLog(data.days || []);
+  } catch {
+    el.innerHTML = '<div style="padding:20px;color:var(--danger)">無法連線後端</div>';
+  }
+}
+
+function _runDotClass(kind, status) {
+  if (!status) return 'gray';
+  if (status === 'running') return 'yellow';
+  if (kind === 'data') return status === 'ok' ? 'green' : 'red';
+  return status === 'done' ? 'green' : 'red';
+}
+
+function _runTip(lines) {
+  return lines.filter(Boolean).join('\n')
+    .replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
+}
+
+function renderRunLog(days) {
+  const el = document.getElementById('run-log-list');
+  if (!days.length) {
+    el.innerHTML = '<div style="padding:20px;color:var(--text-muted);text-align:center">尚無執行紀錄</div>';
+    return;
+  }
+
+  const phaseDot = (kind, label, obj) => {
+    const cls = _runDotClass(kind, obj.status);
+    let tipLines;
+    if (kind === 'data') {
+      tipLines = [
+        `資料日期：${obj.data_date || '—'}`,
+        cls === 'red' ? `⚠ 抓到的資料仍是 ${obj.data_date}，尚未更新到當天` : null,
+      ];
+    } else if (kind === 'ai') {
+      tipLines = [
+        obj.total_count != null ? `進度：${obj.done_count ?? 0} / ${obj.total_count}` : null,
+        obj.started_at ? `開始：${obj.started_at.replace('T', ' ').slice(0, 16)}` : null,
+        obj.done_at ? `完成：${obj.done_at.replace('T', ' ').slice(0, 16)}` : null,
+        obj.error ? `⚠ ${obj.error}` : null,
+      ];
+    } else if (kind === 'trade') {
+      const s = obj.summary || {};
+      tipLines = [
+        s.buy_count != null ? `買入 ${s.buy_count} 筆 · 賣出 ${s.sell_count} 筆` : null,
+        obj.done_at ? `完成：${obj.done_at.replace('T', ' ').slice(0, 16)}` : null,
+        obj.error ? `⚠ ${obj.error}` : null,
+        (s.errors || []).length ? `⚠ ${s.errors.join('；')}` : null,
+      ];
+    } else {
+      tipLines = [
+        obj.started_at ? `開始：${obj.started_at.replace('T', ' ').slice(0, 16)}` : null,
+        obj.done_at ? `完成：${obj.done_at.replace('T', ' ').slice(0, 16)}` : null,
+        obj.error ? `⚠ ${obj.error}` : null,
+      ];
+    }
+    const tipText = _runTip(tipLines);
+    return `
+      <div class="run-log-phase">
+        <span class="phase-label">${label}</span>
+        <span class="run-dot ${cls}${tipText ? ' tip' : ''}" ${tipText ? `data-tip="${tipText}"` : ''}></span>
+      </div>`;
+  };
+
+  el.innerHTML = days.map(d => `
+    <div class="run-log-row${d.is_trading_day ? '' : ' muted'}">
+      <div class="run-log-date">${d.date}（${d.weekday}）</div>
+      <div class="run-log-phases">
+        ${phaseDot('data', '資料', d.data)}
+        ${phaseDot('scan', '訊號掃描', d.scan)}
+        ${phaseDot('ai', 'AI分析', d.ai)}
+        ${phaseDot('trade', '自動交易', d.trade)}
+      </div>
+      ${!d.is_trading_day ? '<div style="font-size:11px;color:var(--text-muted)">非交易日</div>' : ''}
+    </div>
+  `).join('');
 }
 
 // ── Main stock analysis ───────────────────────────────────────────────────────

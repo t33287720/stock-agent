@@ -18,6 +18,7 @@ import yfinance as yf
 import twstock
 
 from backend.config import load_config
+from backend.utils import TAIPEI, is_trading_day
 
 CACHE_DIR = Path(__file__).parent.parent.parent / "cache"
 CACHE_DIR.mkdir(exist_ok=True)
@@ -67,10 +68,11 @@ def _write_cache(key: str, data) -> None:
 # ── stock list ─────────────────────────────────────────────────────────────────
 
 def last_trading_day_str() -> str:
-    """Return the most recent trading day as YYYY-MM-DD (skips weekends only)."""
-    today = datetime.today()
-    offset = {5: 1, 6: 2}.get(today.weekday(), 0)
-    return (today - timedelta(days=offset)).strftime("%Y-%m-%d")
+    """Return the most recent trading day as YYYY-MM-DD (skips weekends + TW market holidays)."""
+    d = datetime.now(TAIPEI).date()
+    while not is_trading_day(d):
+        d -= timedelta(days=1)
+    return d.strftime("%Y-%m-%d")
 
 
 def get_latest_close(ticker: str) -> tuple[float, str]:
