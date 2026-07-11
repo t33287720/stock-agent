@@ -38,6 +38,7 @@ const TIPS = {
   '等權倉位':    '每支股票平均分配相同比例的資金，不因看好程度不同而加重某支。\n例如初始資金 20 萬、最大持倉 5 支 → 每支上限 4 萬。',
 };
 
+// 產生指標名稱旁的「?」提示圖示，hover 時顯示 TIPS 字典裡對應的說明文字
 function tip(key) {
   const text = TIPS[key];
   if (!text) return '';
@@ -53,6 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ── Stock list ────────────────────────────────────────────────────────────────
+// 載入左側股票列表（依成交量排序的前 100 支台股）
 async function loadStockList() {
   const el = document.getElementById('stock-list');
   el.innerHTML = '<div class="loading"><div class="spinner"></div> 載入中...</div>';
@@ -65,6 +67,7 @@ async function loadStockList() {
   }
 }
 
+// 渲染左側股票列表 HTML（含收盤價與成交張數）
 function renderStockList(stocks, fetchedAt) {
   const el = document.getElementById('stock-list');
   const header = fetchedAt
@@ -84,6 +87,7 @@ function renderStockList(stocks, fetchedAt) {
   `).join('');
 }
 
+// 綁定左側搜尋框，依代號或名稱即時過濾股票列表
 function setupSearch() {
   document.getElementById('search').addEventListener('input', function () {
     const q = this.value.toLowerCase();
@@ -95,6 +99,7 @@ function setupSearch() {
 }
 
 // ── Run log (首頁執行狀況列表) ──────────────────────────────────────────────────
+// 呼叫 /api/scan/calendar 取得最近 30 天的執行狀況並渲染
 async function loadRunLog() {
   const el = document.getElementById('run-log-list');
   if (!el) return;
@@ -107,6 +112,7 @@ async function loadRunLog() {
   }
 }
 
+// 依階段種類（data/scan/ai/trade）與狀態值決定圓點顏色：灰＝未執行、黃＝執行中、綠＝完成、紅＝異常
 function _runDotClass(kind, status) {
   if (!status) return 'gray';
   if (status === 'running') return 'yellow';
@@ -114,11 +120,13 @@ function _runDotClass(kind, status) {
   return status === 'done' ? 'green' : 'red';
 }
 
+// 將多行文字組合成 tooltip 用的 data-tip 屬性字串（過濾空值、跳脫特殊字元）
 function _runTip(lines) {
   return lines.filter(Boolean).join('\n')
     .replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
 }
 
+// 渲染執行狀況列表：每天一列，四個階段各顯示一個狀態圓點，非交易日整列淡化
 function renderRunLog(days) {
   const el = document.getElementById('run-log-list');
   if (!days.length) {
@@ -179,6 +187,7 @@ function renderRunLog(days) {
 }
 
 // ── Main stock analysis ───────────────────────────────────────────────────────
+// 載入單一股票的完整分析資料（技術面＋基本面＋歷史K線）並切換到分析頁
 async function loadStock(ticker) {
   currentTicker = ticker;
   document.querySelectorAll('.stock-item').forEach(el =>
@@ -199,6 +208,7 @@ async function loadStock(ticker) {
   }
 }
 
+// 渲染個股分析頁面骨架（標題列、分頁籤、各分頁容器），並延遲繪製圖表
 function renderAnalysis(data) {
   const { ticker, name, technical: t, fundamental: f, history } = data;
   const latest = history[history.length - 1] || {};
@@ -288,6 +298,7 @@ function renderAnalysis(data) {
 }
 
 // ── Technical indicators card ─────────────────────────────────────────────────
+// 渲染技術指標卡片（RSI、MACD、KD、均線、布林通道等最新數值）
 function renderTechTab(t) {
   const indicators = [
     { label: 'RSI (14)', tipKey: 'RSI',
@@ -323,6 +334,7 @@ function renderTechTab(t) {
 }
 
 // ── Signal detail table ───────────────────────────────────────────────────────
+// 渲染近期買賣訊號明細表（最多顯示最近 30 筆）
 function renderSignalsTab(history) {
   const sigRows = history.filter(r => r.signal !== 0);
   if (!sigRows.length) return '<div class="card"><div class="loading" style="padding:40px 0">此區間無買賣訊號</div></div>';
@@ -348,6 +360,7 @@ function renderSignalsTab(history) {
 }
 
 // ── Fundamental card ──────────────────────────────────────────────────────────
+// 渲染基本面數據卡片（P/E、P/B、殖利率、EPS、ROE、市值）與新聞區塊容器
 function renderFundTab(f) {
   const metrics = [
     { label: '本益比 (P/E)',    tipKey: 'PE',  value: f.pe?.toFixed(2) ?? '—' },
@@ -373,6 +386,7 @@ function renderFundTab(f) {
 // ── Related news ──────────────────────────────────────────────────────────────
 let newsLoadedFor = null;
 
+// 載入該股票的相關新聞並渲染於基本面分頁
 async function loadNews(ticker) {
   const el = document.getElementById('news-content');
   if (!el) return;
@@ -385,6 +399,7 @@ async function loadNews(ticker) {
   }
 }
 
+// 渲染新聞列表 HTML（無資料時顯示提示文字）
 function renderNewsList(news) {
   if (!news.length) return '<div class="loading" style="padding:40px 0;color:var(--text-muted)">查無相關新聞</div>';
   return `<div style="display:flex;flex-direction:column;gap:10px">
@@ -399,6 +414,7 @@ function renderNewsList(news) {
 }
 
 // ── AI Analysis ───────────────────────────────────────────────────────────────
+// 渲染 AI 分析分頁的初始畫面（尚未執行分析，顯示「產生 AI 分析」按鈕）
 function renderAiTabPlaceholder() {
   return `<div class="card">
     <div class="card-header">
@@ -414,6 +430,7 @@ function renderAiTabPlaceholder() {
   </div>`;
 }
 
+// 呼叫後端串流 API 執行 ReAct AI 分析，即時把每個步驟插入畫面，完成後渲染最終結果
 async function runAiAnalysis(force = false) {
   if (!currentTicker) return;
   const el  = document.getElementById('ai-result');
@@ -493,6 +510,7 @@ function renderLiveStep(step, index) {
   </div>`;
 }
 
+// 渲染 AI 分析最終結果：判斷、信心度、支持理由、風險提示、新聞來源與完整流程
 function renderAiResult(data) {
   if (data.error) {
     return `<div class="loading" style="padding:24px 0;color:var(--danger)">⚠ ${escapeHtml(data.summary || 'AI 分析失敗')}</div>`;
@@ -574,6 +592,7 @@ function renderAiResult(data) {
 }
 
 // ── Backtest ──────────────────────────────────────────────────────────────────
+// 渲染單股回測分頁的初始畫面（含手續費開關與「開始回測」按鈕）
 function renderBtPlaceholder() {
   return `<div class="card">
     <div class="card-header">
@@ -595,6 +614,7 @@ function renderBtPlaceholder() {
   </div>`;
 }
 
+// 呼叫後端對目前股票執行單股歷史回測
 async function runBacktest() {
   if (!currentTicker) return;
   const withFee = document.getElementById('fee-toggle')?.checked ?? true;
@@ -609,6 +629,7 @@ async function runBacktest() {
   }
 }
 
+// 渲染單股回測結果：績效指標卡片 + 逐筆進出場明細表
 function renderBtResult(d, withFee) {
   const rc = d.total_return_pct >= 0 ? 'positive' : 'negative';
   const feeNote = withFee ? `（含手續費 NT$ ${d.total_fee_paid?.toLocaleString()}）` : '（不含手續費）';
@@ -653,6 +674,7 @@ function renderBtResult(d, withFee) {
 }
 
 // ── Portfolio tab (unified auto_trade portfolio) ──────────────────────────────
+// 載入「模擬交易」分頁的投資組合狀態（與自動交易系統共用同一組資料）
 async function loadSimulation() {
   const el = document.getElementById('sim-content');
   try {
@@ -670,6 +692,7 @@ async function loadSimulation() {
   }
 }
 
+// 渲染尚未初始化投資組合時的畫面（輸入初始資金並開始）
 function renderSimInit() {
   return `<div class="card">
     <div class="card-header"><div class="card-title">💰 投資組合</div></div>
@@ -691,6 +714,7 @@ function renderSimInit() {
   </div>`;
 }
 
+// 渲染投資組合總覽：最新訊號、資產指標、持倉明細、最近交易紀錄
 function renderSimPortfolio(data, trades) {
   const pnlClass  = data.total_pnl >= 0 ? 'positive' : 'negative';
   const positions = data.positions || [];
@@ -787,6 +811,7 @@ function renderSimPortfolio(data, trades) {
     </div>`;
 }
 
+// 呼叫後端以指定的初始資金／每股投入金額初始化投資組合
 async function initSimulation() {
   const capital          = parseFloat(document.getElementById('sim-capital')?.value || 100000);
   const per_stock_budget = parseFloat(document.getElementById('sim-budget')?.value || 10000);
@@ -804,6 +829,7 @@ async function initSimulation() {
   }
 }
 
+// 重置投資組合（沿用原本的資金設定，二次確認後清空持倉與紀錄）
 async function resetSimulation() {
   if (!confirm('確定要重置投資組合？所有持倉和紀錄將清空。')) return;
   let capital = 100000, per_stock_budget = 10000;
@@ -823,19 +849,23 @@ async function resetSimulation() {
   loadSimulation();
 }
 
+// 依目前股票的最新訊號自動判斷買入或賣出
 async function simAutoTrade() {
   if (!currentTicker) return;
   await _simTrade('auto');
 }
+// 手動買入目前股票（不看訊號，直接以現價買入）
 async function simManualBuy() {
   if (!currentTicker) return;
   await _simTrade('buy');
 }
+// 手動賣出目前股票（不看訊號，直接以現價賣出）
 async function simManualSell() {
   if (!currentTicker) return;
   await _simTrade('sell');
 }
 
+// 送出模擬交易請求並刷新投資組合畫面，供 simAutoTrade/simManualBuy/simManualSell 共用
 async function _simTrade(action) {
   try {
     const r = await fetch(`${API}/api/auto/trade`, {
@@ -852,6 +882,7 @@ async function _simTrade(action) {
 }
 
 // ── Charts ────────────────────────────────────────────────────────────────────
+// 繪製K線圖（含買賣訊號標記）、RSI 圖、MACD 圖三張 Chart.js 圖表
 function renderCharts(history) {
   const dates  = history.map(r => r.date);
   const closes = history.map(r => r.close);
@@ -933,6 +964,7 @@ function renderCharts(history) {
   });
 }
 
+// 切換 K 線圖上布林通道（bb）或均線（sma）資料集的顯示/隱藏
 function toggleIndicator(type) {
   if (!priceChart) return;
   (type === 'bb' ? [3,4] : [1,2]).forEach(i => {
@@ -942,6 +974,7 @@ function toggleIndicator(type) {
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
+// 顯示策略設定頁，並把後端目前設定值填入各輸入欄位
 async function showSettings() {
   showPage('settings');
   try {
@@ -965,6 +998,7 @@ async function showSettings() {
   }
 }
 
+// 收集設定頁所有欄位並存回後端（策略參數 + AI 設定）
 async function saveSettings() {
   const body = {
     strategy: {
@@ -996,11 +1030,13 @@ async function saveSettings() {
 }
 
 // ── Full portfolio backtest ────────────────────────────────────────────────────
+// 顯示策略歷史驗證頁（先渲染參數輸入表單）
 async function showFullBacktestPage() {
   showPage('full-backtest');
   document.getElementById('fb-content').innerHTML = renderFBForm();
 }
 
+// 渲染策略歷史驗證的參數輸入表單（回測期間、初始資金、每股投入金額）
 function renderFBForm() {
   return `
     <div class="card">
@@ -1039,6 +1075,7 @@ function renderFBForm() {
   `;
 }
 
+// 呼叫後端執行完整投資組合歷史回測（模擬每日自動掃描＋下單）
 async function runFullBacktest() {
   const btn = document.getElementById('fb-btn');
   const el  = document.getElementById('fb-result');
@@ -1068,6 +1105,7 @@ async function runFullBacktest() {
   }
 }
 
+// 渲染歷史驗證結果：績效指標卡片 + 資產曲線容器 + 賣出交易明細表
 function renderFBResult(d) {
   const rc  = d.total_return_pct >= 0 ? 'positive' : 'negative';
   const profitable = d.total_return_pct >= 0;
@@ -1134,6 +1172,7 @@ function renderFBResult(d) {
   `;
 }
 
+// 繪製歷史驗證的資產曲線圖（資產／現金／初始資金三條線）
 function renderFBChart(history) {
   const canvas = document.getElementById('fb-chart');
   if (!canvas || !history?.length) return;
@@ -1170,6 +1209,7 @@ function renderFBChart(history) {
 }
 
 // ── 今日訊號掃描 ──────────────────────────────────────────────────────────────
+// 顯示今日訊號掃描頁，載入背景排程自動產生的最新掃描結果
 async function showScanPage() {
   showPage('scan');
   const el = document.getElementById('scan-content');
@@ -1211,6 +1251,7 @@ async function showScanPage() {
   }
 }
 
+// 渲染買入/賣出候選清單表格，含統計列與 AI 分析進度
 function renderScanResult(data, progress) {
   const el = document.getElementById('scan-result');
   const { buy_candidates: buys = [], sell_candidates: sells = [],
@@ -1297,6 +1338,7 @@ function renderScanResult(data, progress) {
 
 let _aiRetryPoll = null;
 
+// 觸發後端重新分析今日掃描候選股中先前失敗的項目，並開始輪詢進度
 async function retryAiAnalysis() {
   const btn = document.getElementById('btn-ai-retry');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ 重新分析中...'; }
@@ -1306,6 +1348,7 @@ async function retryAiAnalysis() {
   _pollAiRetry();
 }
 
+// 每 5 秒輪詢一次 AI 重新分析進度，完成或頁面關閉時自動停止
 function _pollAiRetry() {
   if (_aiRetryPoll) return;
   _aiRetryPoll = setInterval(async () => {
@@ -1330,6 +1373,7 @@ function _pollAiRetry() {
   }, 5000);
 }
 
+// 渲染掃描候選清單中的單一股票列（技術指標欄位 + 可展開的 AI 分析詳情）
 function scanRow(s, type, aiEnriched) {
   const rsiColor = s.rsi < 30 ? '#3fb950' : s.rsi > 70 ? '#f85149' : s.rsi > 60 ? '#e3b341' : 'var(--text-secondary)';
   const macdBadge = s.macd_bullish
@@ -1418,11 +1462,13 @@ function scanRow(s, type, aiEnriched) {
 }
 
 // ── Auto Trading ──────────────────────────────────────────────────────────────
+// 顯示自動交易系統頁
 async function showAutoPage() {
   showPage('auto');
   await refreshAutoPage();
 }
 
+// 重新載入自動交易系統的投資組合狀態、成交紀錄與資產曲線
 async function refreshAutoPage() {
   const el = document.getElementById('auto-page-content');
   try {
@@ -1444,6 +1490,7 @@ async function refreshAutoPage() {
   }
 }
 
+// 渲染自動交易系統尚未初始化時的畫面（說明文字＋開始設定表單）
 function renderAutoInit() {
   return `
     <div class="card">
@@ -1475,6 +1522,7 @@ const ORDERS_PAGE_SIZE = 20;
 let autoOrdersData = [];
 let autoOrdersPage = 1;
 
+// 渲染自動交易總覽：資產指標、資產曲線、目前持倉、成交紀錄
 function renderAutoDashboard(portfolio, orders, history) {
   const pnlCls  = portfolio.total_pnl >= 0 ? 'positive' : 'negative';
   const positions = portfolio.positions || [];
@@ -1571,6 +1619,7 @@ function renderAutoDashboard(portfolio, orders, history) {
   `;
 }
 
+// 依目前頁碼（autoOrdersPage）從 autoOrdersData 截取一頁成交紀錄並渲染表格
 function renderOrdersTable() {
   const filled = autoOrdersData;
   if (!filled.length) {
@@ -1608,6 +1657,7 @@ function renderOrdersTable() {
   `;
 }
 
+// 渲染成交紀錄的分頁按鈕（頁數多時中間以「…」省略）
 function renderOrdersPager(totalPages) {
   if (totalPages <= 1) return '';
   const cur = autoOrdersPage;
@@ -1637,11 +1687,13 @@ function renderOrdersPager(totalPages) {
     </div>`;
 }
 
+// 切換成交紀錄目前頁碼並重新渲染表格
 function changeOrdersPage(page) {
   autoOrdersPage = page;
   document.getElementById('orders-table-wrap').innerHTML = renderOrdersTable();
 }
 
+// 呼叫後端以指定的初始資金／每股投入金額初始化自動交易投資組合
 async function autoInit() {
   const capital          = parseFloat(document.getElementById('auto-capital')?.value || 100000);
   const per_stock_budget = parseFloat(document.getElementById('auto-budget')?.value || 10000);
@@ -1654,6 +1706,7 @@ async function autoInit() {
   await refreshAutoPage();
 }
 
+// 撤銷指定持倉：退回買入金額並刪除今日買入紀錄（用於修正錯誤買入，需二次確認）
 async function cancelPosition(ticker, name, refundAmt) {
   if (!confirm(`撤銷 ${ticker} ${name}？\n將退回約 NT$ ${refundAmt.toFixed(0)}（今日買入紀錄也會刪除）`)) return;
   try {
@@ -1667,6 +1720,7 @@ async function cancelPosition(ticker, name, refundAmt) {
   }
 }
 
+// 重置自動交易投資組合（沿用原本的資金設定，二次確認後清空持倉與紀錄）
 async function autoReset() {
   if (!confirm('確定重置自動交易？所有持倉和紀錄將清空。')) return;
   let capital = 100000, per_stock_budget = 10000;
@@ -1685,6 +1739,7 @@ async function autoReset() {
   await refreshAutoPage();
 }
 
+// 繪製自動交易系統的資產曲線圖（總資產／現金兩條線）
 function renderEquityChart(history) {
   const canvas = document.getElementById('equity-chart');
   if (!canvas) return;
@@ -1716,6 +1771,7 @@ function renderEquityChart(history) {
 }
 
 // ── Pages / Tabs ──────────────────────────────────────────────────────────────
+// 切換左側導覽對應的主要頁面區塊（顯示目前頁、隱藏其餘）
 function showPage(page) {
   ['welcome', 'analysis', 'settings', 'auto', 'full-backtest', 'scan'].forEach(p => {
     const el = document.getElementById(`page-${p}`);
@@ -1726,6 +1782,7 @@ function showPage(page) {
 }
 
 
+// 切換個股分析頁的分頁籤，並視需要延遲載入模擬交易狀態／相關新聞
 function switchTab(tab) {
   const all = ['chart', 'signals', 'fundamental', 'backtest', 'simulation', 'ai'];
   all.forEach(t => {
@@ -1745,6 +1802,7 @@ function switchTab(tab) {
 }
 
 // ── Utils ─────────────────────────────────────────────────────────────────────
+// 轉義 HTML 特殊字元，避免使用者/外部資料（如新聞標題）造成 XSS
 function escapeHtml(s) {
   if (s == null) return '';
   return String(s)
@@ -1755,12 +1813,14 @@ function escapeHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
+// 將市值數字格式化為「億／兆」為單位的字串
 function formatMarketCap(v) {
   if (v >= 1e12) return (v / 1e12).toFixed(2) + ' 兆';
   if (v >= 1e8)  return (v / 1e8).toFixed(2)  + ' 億';
   return v.toLocaleString();
 }
 
+// 顯示右下角的提示訊息（4 秒後自動消失）
 function showToast(msg, type = 'success') {
   const el = document.getElementById('toast');
   el.textContent = msg;
