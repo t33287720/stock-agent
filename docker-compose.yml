@@ -2,6 +2,7 @@ services:
 
   # ── 前端 PHP + Nginx ───────────────────────────────────────────────────────────
   web:
+    container_name: stock-web
     build: ./web
     ports:
       - "8080:80"
@@ -11,6 +12,7 @@ services:
 
   # ── Python FastAPI 後端 ────────────────────────────────────────────────────────
   api:
+    container_name: stock-api
     build: ./api
     environment:
       DB_HOST:     db
@@ -34,6 +36,7 @@ services:
 
   # ── SearXNG（個股新聞搜尋，免 API key，主要供 api 內部呼叫；對外開放方便手動驗證搜尋結果）──
   searxng:
+    container_name: stock-searxng
     image: searxng/searxng:latest
     ports:
       - "8081:8080"
@@ -60,9 +63,10 @@ services:
 
   # ── DB 管理介面（Adminer 管理 Postgres）───────────────────────────────────────
   adminer:
+    container_name: stock-adminer
     image: adminer:latest
     ports:
-      - "8082:8080"
+      - "8083:8080"
     depends_on:
       - db
     restart: unless-stopped
