@@ -21,7 +21,7 @@ import twstock
 from backend.config import load_config
 from backend.utils import TAIPEI, is_trading_day
 
-CACHE_DIR = Path(__file__).parent.parent.parent / "cache"
+CACHE_DIR = Path(__file__).parent.parent.parent.parent / "cache"
 CACHE_DIR.mkdir(exist_ok=True)
 
 TWSE_BASE = "https://openapi.twse.com.tw/v1"

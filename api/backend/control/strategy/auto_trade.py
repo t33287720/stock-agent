@@ -16,9 +16,9 @@ Paper-trading engine — PostgreSQL backend.
 from datetime import datetime
 
 from backend.config import load_config
-from backend.data.fetcher import get_stock_history, get_top100_stocks, get_latest_close, last_trading_day_str
-from backend.analysis.technical import calculate_indicators
-from backend.strategy.signals import generate_signals, should_buy, should_sell, check_exit, COMMISSION, TAX
+from backend.control.data.fetcher import get_stock_history, get_top100_stocks, get_latest_close, last_trading_day_str
+from backend.control.analysis.technical import calculate_indicators
+from backend.control.strategy.signals import generate_signals, should_buy, should_sell, check_exit, COMMISSION, TAX
 import backend.db.portfolio_db as db
 from concurrent.futures import ThreadPoolExecutor
 

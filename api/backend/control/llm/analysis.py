@@ -6,9 +6,9 @@ import json
 import time
 from pathlib import Path
 
-from backend.data.fetcher import CACHE_DIR
-from backend.data.news import search_news
-from backend.llm.ollama_client import generate_json
+from backend.control.data.fetcher import CACHE_DIR
+from backend.control.data.news import search_news
+from backend.control.llm.ollama_client import generate_json
 
 AI_CACHE_TTL = 3600  # 1 小時
 MAX_SEARCH_ROUNDS = 10  # 個股 AI 分析最多再延伸搜尋幾輪

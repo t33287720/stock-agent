@@ -8,9 +8,9 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
-from backend.data.fetcher import get_stock_history, get_top100_stocks
-from backend.analysis.technical import calculate_indicators, get_indicator_summary
-from backend.strategy.signals import generate_signals, should_buy, should_sell
+from backend.control.data.fetcher import get_stock_history, get_top100_stocks
+from backend.control.analysis.technical import calculate_indicators, get_indicator_summary
+from backend.control.strategy.signals import generate_signals, should_buy, should_sell
 from backend.utils import TAIPEI
 
 

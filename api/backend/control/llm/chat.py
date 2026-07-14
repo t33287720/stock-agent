@@ -7,11 +7,11 @@
 """
 from concurrent.futures import ThreadPoolExecutor
 
-from backend.analysis.technical import calculate_indicators, get_indicator_summary
-from backend.data.fetcher import get_stock_history, get_fundamental, search_tickers
-from backend.data.news import get_stock_news, search_news
-from backend.llm.analysis import build_stock_context
-from backend.llm.ollama_client import generate_json
+from backend.control.analysis.technical import calculate_indicators, get_indicator_summary
+from backend.control.data.fetcher import get_stock_history, get_fundamental, search_tickers
+from backend.control.data.news import get_stock_news, search_news
+from backend.control.llm.analysis import build_stock_context
+from backend.control.llm.ollama_client import generate_json
 
 CHAT_MAX_SEARCH_ROUNDS = 4  # 比個股分析的 10 輪少，聊天要即時性
 CHAT_NUM_CTX = 12288

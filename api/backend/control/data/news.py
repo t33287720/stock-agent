@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
-from backend.data.fetcher import CACHE_DIR
+from backend.control.data.fetcher import CACHE_DIR
 
 NEWS_CACHE_TTL = 1800  # 30 分鐘
 NEWS_MAX_AGE_DAYS = 1  # 只保留 24 小時內的新聞

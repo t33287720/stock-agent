@@ -16,9 +16,9 @@ import numpy as np
 import pandas as pd
 
 from backend.config import load_config
-from backend.data.fetcher import get_stock_history, get_top100_stocks
-from backend.analysis.technical import calculate_indicators
-from backend.strategy.signals import (
+from backend.control.data.fetcher import get_stock_history, get_top100_stocks
+from backend.control.analysis.technical import calculate_indicators
+from backend.control.strategy.signals import (
     generate_signals, should_buy, should_sell, check_exit,
     COMMISSION, TAX, _max_drawdown, _sharpe_ratio,
 )

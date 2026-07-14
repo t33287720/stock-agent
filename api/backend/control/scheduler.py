@@ -7,12 +7,11 @@ import asyncio
 import logging
 
 from backend.config import load_config
-from backend.data.fetcher import last_trading_day_str, get_stock_history
-from backend.analysis.technical import calculate_indicators, get_indicator_summary
+from backend.control.data.fetcher import last_trading_day_str
 from backend.db import portfolio_db as db
-from backend.strategy.ai_batch import run_batch_ai_analysis
-from backend.strategy.auto_trade import morning_scan, auto_portfolio_summary
-from backend.strategy.scanner import scan_today
+from backend.control.strategy.ai_batch import run_batch_ai_analysis, build_candidates_with_portfolio
+from backend.control.strategy.auto_trade import morning_scan, auto_portfolio_summary
+from backend.control.strategy.scanner import scan_today
 
 logger = logging.getLogger(__name__)
 
@@ -46,29 +45,7 @@ def run_scan_cycle() -> None:
     if cfg.get("settings", {}).get("auto_scan_with_ai", True):
         db.start_phase(current, "ai")
         try:
-            all_candidates = list(result.get("all_candidates", []))
-            scanned_tickers = {c["ticker"] for c in all_candidates}
-
-            # 持倉中不在今日掃描名單的股票，補充技術資料後一併送 AI 分析
-            portfolio = db.load_portfolio()
-            if portfolio:
-                for ticker, pos in portfolio.get("positions", {}).items():
-                    if ticker in scanned_tickers:
-                        continue
-                    try:
-                        df = get_stock_history(ticker, 90)
-                        if df.empty or len(df) < 20:
-                            continue
-                        df = calculate_indicators(df)
-                        all_candidates.append({
-                            "ticker":    ticker,
-                            "name":      pos.get("name", ticker),
-                            "technical": get_indicator_summary(df),
-                        })
-                        logger.info("[scheduler] 補充持倉 %s 至 AI 分析名單", ticker)
-                    except Exception:
-                        logger.warning("[scheduler] 無法取得持倉 %s 技術資料，略過", ticker)
-
+            all_candidates = build_candidates_with_portfolio(result.get("all_candidates", []))
             ai_result = run_batch_ai_analysis(all_candidates, current)
             db.complete_ai(current, "done",
                             done_count=ai_result["analyzed"] + ai_result["skipped"],
