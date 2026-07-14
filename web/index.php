@@ -275,6 +275,18 @@
 
 <!-- JS dependencies -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
-<script src="/stock/static/js/app.js"></script>
+<!-- core.js 最先載入（全域狀態、showPage/switchTab、共用小工具）；
+     ai-analysis.js 排在 chat.js / scan.js 之前，因為它們重用 renderStepBody -->
+<script src="/stock/static/js/core.js"></script>
+<script src="/stock/static/js/pages/home.js"></script>
+<script src="/stock/static/js/pages/stock-detail.js"></script>
+<script src="/stock/static/js/pages/ai-analysis.js"></script>
+<script src="/stock/static/js/pages/backtest.js"></script>
+<script src="/stock/static/js/pages/simulation.js"></script>
+<script src="/stock/static/js/pages/settings.js"></script>
+<script src="/stock/static/js/pages/full-backtest.js"></script>
+<script src="/stock/static/js/pages/scan.js"></script>
+<script src="/stock/static/js/pages/auto-trade.js"></script>
+<script src="/stock/static/js/pages/chat.js"></script>
 </body>
 </html>

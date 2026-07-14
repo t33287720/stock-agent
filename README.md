@@ -13,7 +13,8 @@
 - **全組合回測**：將自動交易策略套用到過去歷史，逐交易日模擬最多 N 支股票的整體績效（總報酬、最大回撤、勝率、夏普比率）
 - **自動交易（模擬）**：依據訊號規則自動買進/賣出、停損停利，所有持倉與交易紀錄存於 PostgreSQL，重啟不丟失
 
-更完整的資料流說明可參考系統內建的[系統架構圖](web/system_map.html)（`/stock/system_map.html`）。
+更完整的資料流說明可參考系統內建的[系統架構圖](web/system_map.html)（`/stock/system_map.html`），
+或 [ARCHITECTURE.md](ARCHITECTURE.md)（顯示區／控制區／API 區的檔案對照表與除錯指引）。
 
 ## 架構
 
@@ -39,6 +40,8 @@
 
 ### 目錄結構
 
+檔案依「顯示區 / API 區 / 控制區」分類，詳細對照表見 [ARCHITECTURE.md](ARCHITECTURE.md)。
+
 ```
 api/
   Dockerfile
@@ -48,32 +51,45 @@ api/
     settings.example.json         # 設定範例（實際設定存於 settings.json，不進版控）
     settings.json
   backend/
-    main.py                      # FastAPI 入口與所有路由
-    scheduler.py                 # 背景排程：容器啟動 + 每小時自動掃描/自動下單
+    main.py                      # API 區組裝點：建立 app、掛載路由、啟動背景排程（不含路由邏輯）
     config.py                    # 讀寫 settings.json（策略參數、快取設定）
     utils.py                     # 台股交易日曆 / 時區
-    data/fetcher.py              # 股價、基本面抓取與快取
-    data/news.py                 # 個股相關新聞搜尋（透過 SearXNG，免 API key）
-    llm/ollama_client.py         # Ollama 傳輸層（JSON mode、容錯解析）
-    llm/analysis.py               # AI 分析：prompt、正規化、快取、二次驗證
-    analysis/technical.py        # 技術指標計算
-    strategy/signals.py          # 買賣訊號、單股回測、手續費常數
-    strategy/scanner.py          # 今日訊號掃描
-    strategy/auto_trade.py       # 自動交易（模擬）引擎
-    strategy/full_backtest.py    # 全組合歷史回測
-    db/portfolio_db.py           # PostgreSQL 存取層
+    api/                         # ── API 區：純路由，只做 request → 呼叫控制區/DB → response ──
+      stocks.py                  # 股票列表 / 個股技術+基本面 / 新聞 / AI 分析
+      chat.py                    # 問股票聊天
+      backtest.py                # 單股回測 / 策略歷史驗證
+      auto_trade.py              # 自動交易（模擬）
+      scan.py                    # 今日訊號掃描
+      settings.py                # 策略/系統設定
+    control/                     # ── 控制區：外部資料撈取 + 商業邏輯 + 寫 DB ──
+      scheduler.py               # 背景排程：容器啟動 + 每小時自動掃描/自動下單
+      data/fetcher.py            # 股價、基本面抓取與快取
+      data/news.py               # 個股相關新聞搜尋（透過 SearXNG，免 API key）
+      llm/ollama_client.py       # Ollama 傳輸層（JSON mode、容錯解析）
+      llm/analysis.py            # AI 分析：prompt、正規化、快取、二次驗證
+      llm/chat.py                # 問股票聊天邏輯
+      analysis/technical.py      # 技術指標計算
+      strategy/signals.py        # 買賣訊號、單股回測、手續費常數
+      strategy/scanner.py        # 今日訊號掃描
+      strategy/auto_trade.py     # 自動交易（模擬）引擎
+      strategy/full_backtest.py  # 全組合歷史回測
+      strategy/ai_batch.py       # 批次 AI 分析（含補充持倉候選股共用邏輯）
+    db/portfolio_db.py           # ── 資料層（共用）：PostgreSQL 存取層 ──
     db/schema.sql                # 資料庫表結構
 
 db/
   data/                           # PostgreSQL 資料目錄（bind mount，不進版控）
 
-web/
+web/                              # ── 顯示區 ──
   Dockerfile
   docker/nginx.conf, supervisord.conf
-  index.php                      # 前端頁面
+  index.php                      # 前端頁面骨架
   system_map.html                # 互動式系統架構圖
   static/css/style.css
-  static/js/app.js
+  static/js/
+    core.js                      # 全域狀態、頁面路由、共用小工具
+    pages/                       # 每個分頁一支檔案（home/stock-detail/ai-analysis/backtest/
+                                  # simulation/settings/full-backtest/scan/auto-trade/chat）
 
 searxng/
   settings.yml                   # SearXNG 設定（啟用 JSON API，供 api 內部呼叫）
@@ -90,18 +106,18 @@ deploy.sh                        # 重建並啟動所有容器（含清除殭屍
 
 ```mermaid
 flowchart LR
-    UI[index.php<br/>個股分析頁] -->|GET /api/stock/ticker| StockAPI[main.py]
-    UI -->|POST /api/stock/ticker/ai-analysis| AIAPI[main.py]
+    UI[pages/stock-detail.js<br/>個股分析頁] -->|GET /api/stock/ticker| StockAPI[api/stocks.py]
+    UI2[pages/ai-analysis.js] -->|POST /api/stock/ticker/ai-analysis| AIAPI[api/stocks.py]
 
-    StockAPI --> Fetcher[data/fetcher.py<br/>股價 + 基本面]
-    StockAPI --> Technical[analysis/technical.py<br/>技術指標]
-    StockAPI --> Signals[strategy/signals.py<br/>產生買賣訊號]
+    StockAPI --> Fetcher[control/data/fetcher.py<br/>股價 + 基本面]
+    StockAPI --> Technical[control/analysis/technical.py<br/>技術指標]
+    StockAPI --> Signals[control/strategy/signals.py<br/>產生買賣訊號]
 
     AIAPI --> Fetcher
     AIAPI --> Technical
-    AIAPI --> News[data/news.py<br/>SearXNG 新聞搜尋]
-    AIAPI --> LLM[llm/analysis.py<br/>產生分析 + 二次驗證]
-    LLM --> Ollama[llm/ollama_client.py]
+    AIAPI --> News[control/data/news.py<br/>SearXNG 新聞搜尋]
+    AIAPI --> LLM[control/llm/analysis.py<br/>產生分析 + 二次驗證]
+    LLM --> Ollama[control/llm/ollama_client.py]
     Ollama --> OllamaSvc[(主機 Ollama<br/>qwen2.5:7b)]
 ```
 
@@ -111,14 +127,14 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    Start[容器啟動 / 每小時] --> Loop[scheduler.scan_loop]
-    Loop --> Cycle[scheduler.run_scan_cycle]
+    Start[容器啟動 / 每小時] --> Loop[control/scheduler.scan_loop]
+    Loop --> Cycle[control/scheduler.run_scan_cycle]
     Cycle --> Check{是否有新<br/>交易日資料?}
     Check -- 否 --> State[(scan_state 表)]
-    Check -- 是 --> Scan[strategy/scanner.scan_today]
-    Scan --> AI[strategy/scanner.enrich_with_ai<br/>視設定 auto_scan_with_ai]
+    Check -- 是 --> Scan[control/strategy/scanner.scan_today]
+    Scan --> AI[control/strategy/ai_batch.run_batch_ai_analysis<br/>視設定 auto_scan_with_ai]
     AI --> Results[(scan_results 表)]
-    Results --> Morning[strategy/auto_trade.morning_scan<br/>若自動交易已初始化]
+    Results --> Morning[control/strategy/auto_trade.morning_scan<br/>若自動交易已初始化]
     Morning --> Positions[(positions / trades 表)]
     Morning --> State
 ```
@@ -127,18 +143,18 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    UI[index.php<br/>策略歷史驗證頁] -->|POST /api/full-backtest| API[main.py]
-    API --> FullBT[strategy/full_backtest.py]
-    FullBT --> Fetcher[data/fetcher.py<br/>批次抓歷史 K 線]
-    FullBT --> Signals[strategy/signals.py<br/>generate_signals / run_backtest]
+    UI[pages/full-backtest.js<br/>策略歷史驗證頁] -->|POST /api/full-backtest| API[api/backtest.py]
+    API --> FullBT[control/strategy/full_backtest.py]
+    FullBT --> Fetcher[control/data/fetcher.py<br/>批次抓歷史 K 線]
+    FullBT --> Signals[control/strategy/signals.py<br/>generate_signals / run_backtest]
 ```
 
 ### 策略設定
 
 ```mermaid
 flowchart LR
-    UI[index.php<br/>策略設定頁] -->|GET / PUT /api/config| API[main.py]
-    API --> Config[config.py]
+    UI[pages/settings.js<br/>策略設定頁] -->|GET / PUT /api/config| API[api/settings.py]
+    API --> Config[backend/config.py]
     Config --> File[(api/config/settings.json)]
 ```
 

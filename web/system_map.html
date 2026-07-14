@@ -314,12 +314,12 @@ body {
     </div>
   </div>
   <div class="card-divider"></div>
-  <div class="card-bottom">📄 檔案：index.php · app.js · style.css</div>
+  <div class="card-bottom">📄 檔案：index.php · core.js + pages/*.js · style.css</div>
 </div>
 
 <!-- 3. 系統大腦 -->
 <div class="card blue" id="c3" style="left:1020px;top:200px;width:280px"
-  data-tip="<b>系統大腦 (main.py)</b><br>後端伺服器，所有請求都進來這裡。<br><br>它負責指揮各個模組工作，再把結果整合回傳給你的畫面。">
+  data-tip="<b>系統大腦 (backend/api/*.py，由 main.py 組裝)</b><br>後端伺服器，所有請求都進來這裡。<br><br>main.py 只負責掛載路由；每個功能實際的路由邏輯分別在 backend/api/ 底下的檔案（依功能分檔），指揮控制區各模組工作，再把結果整合回傳給你的畫面。">
   <div class="step-badge">3</div>
   <div class="card-top">
     <div class="card-icon">⚡</div>
@@ -437,7 +437,7 @@ body {
 
 <!-- AI 分析 -->
 <div class="card purple" id="c16" style="left:1780px;top:590px;width:320px"
-  data-tip="<b>AI 分析 (llm/ollama_client.py · llm/analysis.py)</b><br>把技術指標、基本面與相關新聞整理成文字，交給本機 Ollama LLM（JSON mode）分析。<br><br>採兩階段流程：第一次產生初步判斷，第二次請同一個模型逐項核對結論是否真的有資料支持，移除查無依據的陳述並調整信心度，降低幻覺風險。<br><br>個股頁可手動觸發完整分析；背景排程每小時自動掃描時，也會依設定（auto_scan_with_ai）對候選股加上 AI 信心評分。">
+  data-tip="<b>AI 分析 (control/llm/ollama_client.py · control/llm/analysis.py)</b><br>把技術指標、基本面與相關新聞整理成文字，交給本機 Ollama LLM（JSON mode）分析。<br><br>採兩階段流程：第一次產生初步判斷，第二次請同一個模型逐項核對結論是否真的有資料支持，移除查無依據的陳述並調整信心度，降低幻覺風險。<br><br>個股頁可手動觸發完整分析；背景排程每小時自動掃描時，也會依設定（auto_scan_with_ai）對候選股加上 AI 信心評分。">
   <div class="card-top">
     <div class="card-icon">🤖</div>
     <div class="card-title">AI 分析（本機 LLM）</div>
