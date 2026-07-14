@@ -20,61 +20,72 @@ SCAN_MAX_CANDIDATES = 150
 
 
 def run_scan_cycle() -> None:
-    """檢查是否有新交易日資料；有的話執行今日訊號掃描 + (若已啟用自動交易) 早盤掃描。"""
-    current = last_trading_day_str()
+    """每小時都實際執行一次今日訊號掃描（股價多半命中本地快取，成本低），
+    直接以「抓到的資料日期（data_date）」跟上次已完整處理過的資料日期比對，
+    不同才代表出現新的收盤資料，才觸發 AI 批次分析與自動交易。
+
+    不能用日曆（last_trading_day_str()）判斷「今天掃過了沒」：凌晨（開盤前）
+    執行時，日曆上的今天已經算「current」，但抓到的其實還是前一個交易日的
+    資料；若只記錄「今天已經掃過」，同一天內即使資料後來更新了，也會被誤判
+    成「已完成」而永遠不再重新掃描。改成比對資料本身的日期，不管什麼時間點
+    執行、抓到的是哪一天的資料，只要跟上次處理過的不同就會重新觸發，才是
+    真正正確的判斷方式。
+    """
+    run_date = last_trading_day_str()  # 僅作為 daily_run_log 的 key（今天的日曆日期）
     state = db.get_scan_state()
 
-    if state.get("last_scan_date") == current:
+    db.start_phase(run_date, "scan")
+    try:
+        result = scan_today(max_candidates=SCAN_MAX_CANDIDATES)
+        data_date = result.get("data_date")
+        db.save_scan_result(run_date, result)
+        db.set_data_status(run_date, data_date, "ok" if data_date == run_date else "stale")
+        db.complete_scan(run_date, "done")
+    except Exception as e:
+        db.complete_scan(run_date, "error", error=str(e)[:300])
+        raise
+
+    if state.get("last_scan_date") == data_date:
         db.update_scan_state()
         return
 
-    logger.info("[scheduler] 偵測到新交易日 %s，開始自動掃描", current)
-
-    db.start_phase(current, "scan")
-    try:
-        result = scan_today(max_candidates=SCAN_MAX_CANDIDATES)
-        db.save_scan_result(current, result)
-        data_date = result.get("data_date")
-        db.set_data_status(current, data_date, "ok" if data_date == current else "stale")
-        db.complete_scan(current, "done")
-    except Exception as e:
-        db.complete_scan(current, "error", error=str(e)[:300])
-        raise
+    logger.info("[scheduler] 偵測到新資料 %s（先前已處理到 %s），開始 AI 分析／自動交易",
+                data_date, state.get("last_scan_date"))
 
     cfg = load_config()
     if cfg.get("settings", {}).get("auto_scan_with_ai", True):
-        db.start_phase(current, "ai")
+        db.start_phase(run_date, "ai")
         try:
             all_candidates = build_candidates_with_portfolio(result.get("all_candidates", []))
-            ai_result = run_batch_ai_analysis(all_candidates, current)
-            db.complete_ai(current, "done",
+            ai_result = run_batch_ai_analysis(all_candidates, run_date)
+            db.complete_ai(run_date, "done",
                             done_count=ai_result["analyzed"] + ai_result["skipped"],
                             total_count=len(all_candidates))
         except Exception:
             logger.exception("[scheduler] AI 批次分析失敗")
-            db.complete_ai(current, "error", error="AI批次分析失敗")
+            db.complete_ai(run_date, "error", error="AI批次分析失敗")
 
     if db.load_portfolio():
-        db.start_phase(current, "trade")
+        db.start_phase(run_date, "trade")
         try:
             trade_result = morning_scan(max_candidates=SCAN_MAX_CANDIDATES)
             summary = auto_portfolio_summary()
             db.append_equity({
-                "date":           current,
+                "date":           run_date,
                 "equity":         summary["total_value"],
                 "cash":           summary["cash"],
                 "position_value": summary["position_value"],
             })
-            db.complete_trade(current, "done", summary={
+            db.complete_trade(run_date, "done", summary={
                 "buy_count":  trade_result.get("buy_count"),
                 "sell_count": trade_result.get("sell_count"),
                 "errors":     trade_result.get("errors", []),
             })
         except Exception:
             logger.exception("[scheduler] 早盤掃描失敗")
-            db.complete_trade(current, "error", error="早盤掃描失敗")
+            db.complete_trade(run_date, "error", error="早盤掃描失敗")
 
-    db.update_scan_state(current)
+    db.update_scan_state(data_date)
     logger.info("[scheduler] 自動掃描完成")
 
 

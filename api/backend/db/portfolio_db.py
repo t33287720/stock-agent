@@ -393,7 +393,14 @@ def load_history() -> list:
 # ── Scan state / results ───────────────────────────────────────────────────────
 
 def get_scan_state() -> dict:
-    """Return {'last_scan_date': str|None, 'last_checked_at': str|None}."""
+    """Return {'last_scan_date': str|None, 'last_checked_at': str|None}.
+
+    last_scan_date holds the data_date (from scan_today()'s actual fetched data)
+    of the last cycle that ran AI analysis / auto-trade to completion — NOT a
+    calendar date. Comparing against the newly-fetched data_date is what lets
+    the scheduler detect "new closing data appeared" regardless of what wall-clock
+    time it happens to check.
+    """
     with _conn() as c:
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("SELECT last_scan_date, last_checked_at FROM scan_state WHERE id = 1")
