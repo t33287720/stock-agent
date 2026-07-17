@@ -16,12 +16,15 @@ import json
 import os
 import psycopg2
 import psycopg2.extras
+import pytz
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent.parent / ".env")
+
+TAIPEI = pytz.timezone("Asia/Taipei")
 
 
 # ── Connection ─────────────────────────────────────────────────────────────────
@@ -409,7 +412,7 @@ def get_scan_state() -> dict:
                 return {"last_scan_date": None, "last_checked_at": None}
             return {
                 "last_scan_date":  str(row["last_scan_date"]) if row["last_scan_date"] else None,
-                "last_checked_at": row["last_checked_at"].isoformat() if row["last_checked_at"] else None,
+                "last_checked_at": row["last_checked_at"].astimezone(TAIPEI).isoformat() if row["last_checked_at"] else None,
             }
 
 
@@ -463,7 +466,7 @@ def get_latest_scan_result() -> dict | None:
                 return None
             result = dict(row["result"])
             result["scan_date"] = str(row["scan_date"])
-            result["created_at"] = row["created_at"].isoformat()
+            result["created_at"] = row["created_at"].astimezone(TAIPEI).isoformat()
             return result
 
 
@@ -546,14 +549,18 @@ def set_data_status(run_date: str, data_date: str | None, status: str) -> None:
 
 
 def get_run_log(days: int = 30) -> list[dict]:
-    """Return daily_run_log rows for the last `days` calendar days, newest first."""
+    """Return daily_run_log rows for the last `days` calendar days (Taipei time), newest first."""
+    # Postgres session runs in UTC (see `SHOW timezone`), so CURRENT_DATE would be
+    # up to a day behind Taipei's actual today during Taipei's 00:00–08:00 window.
+    # Compute the cutoff in Taipei time in Python instead of relying on the DB's clock.
+    threshold = (datetime.now(TAIPEI) - timedelta(days=days)).date()
     with _conn() as c:
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
                 SELECT * FROM daily_run_log
-                WHERE run_date >= CURRENT_DATE - %s::int
+                WHERE run_date >= %s
                 ORDER BY run_date DESC
-            """, (days,))
+            """, (threshold,))
             rows = cur.fetchall()
 
     out = []
@@ -565,7 +572,8 @@ def get_run_log(days: int = 30) -> list[dict]:
         for key in ("scan_started_at", "scan_done_at", "ai_started_at", "ai_done_at",
                     "trade_started_at", "trade_done_at"):
             if d.get(key) is not None:
-                d[key] = d[key].isoformat()
+                # 存的是 TIMESTAMPTZ（UTC），轉成台北時間再序列化，前端才不會顯示成 UTC 時間（差 8 小時）。
+                d[key] = d[key].astimezone(TAIPEI).isoformat()
         out.append(d)
     return out
 
