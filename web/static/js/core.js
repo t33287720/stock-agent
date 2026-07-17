@@ -59,7 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ── Pages / Tabs ──────────────────────────────────────────────────────────────
 // 切換左側導覽對應的主要頁面區塊（顯示目前頁、隱藏其餘）
 function showPage(page) {
-  ['welcome', 'analysis', 'settings', 'auto', 'full-backtest', 'scan', 'chat'].forEach(p => {
+  ['welcome', 'analysis', 'settings', 'auto', 'full-backtest', 'scan', 'market', 'chat'].forEach(p => {
     const el = document.getElementById(`page-${p}`);
     if (el) el.style.display = p === page ? '' : 'none';
   });

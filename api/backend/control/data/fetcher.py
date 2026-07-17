@@ -106,6 +106,33 @@ def get_latest_close(ticker: str) -> tuple[float, str]:
     return price, date_str
 
 
+def _fetch_all_twse_quotes() -> list[dict]:
+    """回傳 TWSE STOCK_DAY_ALL 全部上市股票當日價格/成交量（不排序、不截斷）。"""
+    url = f"{TWSE_BASE}/exchangeReport/STOCK_DAY_ALL"
+    resp = requests.get(url, headers=HEADERS, timeout=15)
+    resp.raise_for_status()
+    raw = resp.json()
+
+    stocks = []
+    for item in raw:
+        try:
+            shares = float(str(item.get("TradeVolume", "0")).replace(",", ""))
+            lots = shares / 1000  # 張數 = 股數 / 1000
+            close_str = str(item.get("ClosingPrice", "0")).replace(",", "")
+            close = float(close_str) if close_str not in ("", "--") else 0.0
+            stocks.append({
+                "ticker": item["Code"],
+                "name": item["Name"],
+                "close": close,
+                "volume": shares,
+                "lots": round(lots, 0),           # 張數
+                "trade_value": float(str(item.get("TradeValue", "0")).replace(",", "")),
+            })
+        except (ValueError, KeyError):
+            continue
+    return stocks
+
+
 def get_top100_stocks() -> list[dict]:
     """Return top-300 Taiwan stocks sorted by daily 張數 (lots traded)."""
     # Use date-keyed cache so it auto-invalidates on each new trading day
@@ -115,29 +142,7 @@ def get_top100_stocks() -> list[dict]:
         return cached
 
     try:
-        url = f"{TWSE_BASE}/exchangeReport/STOCK_DAY_ALL"
-        resp = requests.get(url, headers=HEADERS, timeout=15)
-        resp.raise_for_status()
-        raw = resp.json()
-
-        stocks = []
-        for item in raw:
-            try:
-                shares = float(str(item.get("TradeVolume", "0")).replace(",", ""))
-                lots = shares / 1000  # 張數 = 股數 / 1000
-                close_str = str(item.get("ClosingPrice", "0")).replace(",", "")
-                close = float(close_str) if close_str not in ("", "--") else 0.0
-                stocks.append({
-                    "ticker": item["Code"],
-                    "name": item["Name"],
-                    "close": close,
-                    "volume": shares,
-                    "lots": round(lots, 0),           # 張數
-                    "trade_value": float(str(item.get("TradeValue", "0")).replace(",", "")),
-                })
-            except (ValueError, KeyError):
-                continue
-
+        stocks = _fetch_all_twse_quotes()
         # Sort by 張數 (lots traded) descending → top 300
         stocks.sort(key=lambda x: x["lots"], reverse=True)
         top300 = stocks[:300]
@@ -147,6 +152,124 @@ def get_top100_stocks() -> list[dict]:
     except Exception as e:
         print(f"[fetcher] top300 error: {e}")
         return _fallback_stock_list()
+
+
+def _fetch_all_twse_valuation() -> dict[str, dict]:
+    """回傳 TWSE BWIBBU_d 全部上市股票的 PE/PB/殖利率（不帶 stockNo，一次拿全市場）。"""
+    date_str = datetime.today().strftime("%Y%m%d")
+    url = f"{TWSE_BWIBBU}?response=json&date={date_str}&selectType=ALL"
+    resp = requests.get(url, headers=HEADERS, timeout=15)
+    resp.raise_for_status()
+    raw = resp.json()
+
+    out = {}
+    # fields: 證券代號, 證券名稱, 收盤價, 殖利率(%), 股利年度, 本益比, 股價淨值比, 財報年/季
+    for row in raw.get("data", []):
+        try:
+            out[row[0]] = {
+                "pe":        _safe_float(row[5]),
+                "pb":        _safe_float(row[6]),
+                "div_yield": _safe_float(row[3]),
+            }
+        except (IndexError, TypeError):
+            continue
+    return out
+
+
+def _fetch_all_tpex_quotes() -> list[dict]:
+    """回傳 TPEX 全部上櫃股票當日價格/成交量。"""
+    url = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes"
+    resp = requests.get(url, headers=HEADERS, timeout=15)
+    resp.raise_for_status()
+    raw = resp.json()
+
+    stocks = []
+    for item in raw:
+        try:
+            shares = float(str(item.get("TradingShares", "0")).replace(",", ""))
+            close_str = str(item.get("Close", "0")).replace(",", "")
+            close = float(close_str) if close_str not in ("", "--") else 0.0
+            stocks.append({
+                "ticker": item["SecuritiesCompanyCode"],
+                "name": item["CompanyName"],
+                "close": close,
+                "volume": shares,
+                "lots": round(shares / 1000, 0),
+                "trade_value": float(str(item.get("TransactionAmount", "0")).replace(",", "")),
+            })
+        except (ValueError, KeyError):
+            continue
+    return stocks
+
+
+def _fetch_all_tpex_valuation() -> dict[str, dict]:
+    """回傳 TPEX 全部上櫃股票的 PE/PB/殖利率。"""
+    url = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_peratio_analysis"
+    resp = requests.get(url, headers=HEADERS, timeout=15)
+    resp.raise_for_status()
+    raw = resp.json()
+
+    out = {}
+    for item in raw:
+        ticker = item.get("SecuritiesCompanyCode")
+        if not ticker:
+            continue
+        out[ticker] = {
+            "pe":        _safe_float(item.get("PriceEarningRatio")),
+            "pb":        _safe_float(item.get("PriceBookRatio")),
+            "div_yield": _safe_float(item.get("YieldRatio")),
+        }
+    return out
+
+
+def get_market_screener() -> list[dict]:
+    """回傳全市場（TWSE 上市 + TPEX 上櫃）股票清單，含價格/成交量/PE/PB/殖利率，
+    供「全市場篩選」頁面使用。
+
+    只用四個「一次回傳全市場」的批次端點，不逐支股票打，成本低。技術指標
+    （RSI/KD 等）不在這裡算——那些需要抓歷史 K 線，只對使用者篩選後的子集
+    現算（見 control/strategy/market_screener.py），全市場不會預先全算。
+    """
+    cache_key = f"market_screener_{last_trading_day_str()}"
+    cached = _read_cache(cache_key)
+    if cached:
+        return cached
+
+    result = []
+
+    try:
+        twse_quotes = _fetch_all_twse_quotes()
+    except Exception as e:
+        print(f"[fetcher] market screener TWSE quotes error: {e}")
+        twse_quotes = []
+    try:
+        twse_valuation = _fetch_all_twse_valuation()
+    except Exception as e:
+        print(f"[fetcher] market screener TWSE valuation error: {e}")
+        twse_valuation = {}
+    for s in twse_quotes:
+        v = twse_valuation.get(s["ticker"], {})
+        result.append({**s, "market": "TWSE",
+                       "pe": v.get("pe"), "pb": v.get("pb"), "div_yield": v.get("div_yield")})
+
+    try:
+        tpex_quotes = _fetch_all_tpex_quotes()
+    except Exception as e:
+        print(f"[fetcher] market screener TPEX quotes error: {e}")
+        tpex_quotes = []
+    try:
+        tpex_valuation = _fetch_all_tpex_valuation()
+    except Exception as e:
+        print(f"[fetcher] market screener TPEX valuation error: {e}")
+        tpex_valuation = {}
+    for s in tpex_quotes:
+        v = tpex_valuation.get(s["ticker"], {})
+        result.append({**s, "market": "TPEX",
+                       "pe": v.get("pe"), "pb": v.get("pb"), "div_yield": v.get("div_yield")})
+
+    if result:
+        _write_cache(cache_key, result)
+    return result
 
 
 def _load_company_name_map() -> dict[str, str]:

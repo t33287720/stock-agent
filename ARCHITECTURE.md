@@ -40,6 +40,7 @@ web/                                    ── 顯示區 ──
       settings.js                       策略設定頁
       full-backtest.js                  策略歷史驗證頁（全組合回測）
       scan.js                           今日訊號掃描頁
+      market.js                         全市場篩選頁
       auto-trade.js                     自動交易總覽頁
       chat.js                           問股票聊天頁
 
@@ -51,10 +52,11 @@ api/backend/
     backtest.py       單股回測 / 策略歷史驗證
     auto_trade.py     自動交易（模擬）
     scan.py           今日訊號掃描
+    market.py         全市場篩選
     settings.py       策略/系統設定
   control/                               ── 控制區 ──
     scheduler.py      背景排程：每小時檢查新交易日，自動觸發下面幾個模組
-    data/fetcher.py   股價、基本面抓取與快取
+    data/fetcher.py   股價、基本面抓取與快取（含全市場批次報價/估值）
     data/news.py      個股相關新聞搜尋（SearXNG）
     analysis/technical.py  技術指標計算
     llm/ollama_client.py   Ollama 傳輸層
@@ -65,6 +67,7 @@ api/backend/
     strategy/auto_trade.py  自動交易（模擬）引擎
     strategy/full_backtest.py  全組合歷史回測
     strategy/ai_batch.py       批次 AI 分析（含補充持倉候選股共用邏輯）
+    strategy/market_screener.py  全市場篩選頁：對篩選後子集現算技術指標
   db/                                     ── 資料層（共用，不屬於任何一區）──
     portfolio_db.py   PostgreSQL 存取層
     schema.sql
@@ -87,6 +90,7 @@ api/backend/
 | 模擬交易（個股頁內分頁） | `pages/simulation.js` | `api/auto_trade.py` | `control/strategy/auto_trade.py` | `db/portfolio_db.py` |
 | 自動交易總覽頁 | `pages/auto-trade.js` | `api/auto_trade.py` | `control/strategy/auto_trade.py` | `db/portfolio_db.py` |
 | 今日訊號掃描頁（讀取＋手動重試） | `pages/scan.js` | `api/scan.py` | `control/strategy/ai_batch.py`（重試邏輯） | `db/portfolio_db.py`（掃描結果快取） |
+| 全市場篩選（TWSE+TPEX 全市場清單 + 子集技術指標） | `pages/market.js` | `api/market.py` | `control/data/fetcher.py`（全市場批次報價/估值） + `control/strategy/market_screener.py`（子集技術指標） | — |
 | 背景自動掃描（非使用者觸發，每小時） | — | — | `control/scheduler.py` → `strategy/scanner.py`、`strategy/ai_batch.py`、`strategy/auto_trade.py` | `db/portfolio_db.py` |
 | 策略設定頁 | `pages/settings.js` | `api/settings.py` | `backend/config.py`（讀寫 `api/config/settings.json`） | — |
 

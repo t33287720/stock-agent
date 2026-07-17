@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from backend.control.scheduler import scan_loop
-from backend.api import stocks, chat, backtest, auto_trade, scan, settings
+from backend.api import stocks, chat, backtest, auto_trade, scan, settings, market
 
 app = FastAPI(title="台股 AI 分析系統", version="1.0.0")
 
@@ -53,3 +53,4 @@ app.include_router(backtest.router)     # 單股回測 / 策略歷史驗證
 app.include_router(auto_trade.router)   # 自動交易（模擬）
 app.include_router(scan.router)         # 今日訊號掃描
 app.include_router(settings.router)     # 策略/系統設定
+app.include_router(market.router)       # 全市場篩選

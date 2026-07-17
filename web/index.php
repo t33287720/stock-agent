@@ -43,6 +43,12 @@
         </svg>
         今日訊號掃描
       </button>
+      <button class="nav-item" data-page="market" onclick="showMarketPage()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+        </svg>
+        全市場篩選
+      </button>
       <button class="nav-item" data-page="auto" onclick="showAutoPage()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
@@ -153,6 +159,13 @@
     <!-- Scan page -->
     <div id="page-scan" style="display:none">
       <div id="scan-content">
+        <div class="loading"><div class="spinner"></div></div>
+      </div>
+    </div>
+
+    <!-- Market screener page -->
+    <div id="page-market" style="display:none">
+      <div id="market-content">
         <div class="loading"><div class="spinner"></div></div>
       </div>
     </div>
@@ -286,6 +299,7 @@
 <script src="/stock/static/js/pages/settings.js"></script>
 <script src="/stock/static/js/pages/full-backtest.js"></script>
 <script src="/stock/static/js/pages/scan.js"></script>
+<script src="/stock/static/js/pages/market.js"></script>
 <script src="/stock/static/js/pages/auto-trade.js"></script>
 <script src="/stock/static/js/pages/chat.js"></script>
 </body>

@@ -9,6 +9,7 @@
 - **個股分析**：技術指標（RSI、MACD、KD、布林通道、SMA 等共 15 種）+ 基本面（P/E、P/B、ROE、殖利率）+ 相關新聞搜尋
 - **個股 AI 分析**：技術指標 + 基本面 + 相關新聞交給本機 Ollama LLM，產生偏多/中性/偏空判斷、信心度、理由與風險，並經第二次驗證降低幻覺
 - **今日訊號掃描**：掃描追蹤股票池，找出今天觸發買進/賣出訊號的股票，可選擇加入 AI 信心評分（含當日新聞佐證）
+- **全市場篩選**：TWSE 上市 + TPEX 上櫃全市場（約 1900 支）依價格/成交量/PE/PB/殖利率即時篩選，篩選後子集（上限 150 支）可即時計算 RSI/KD 等技術指標
 - **單股回測**：用歷史資料模擬單一股票的買賣訊號表現
 - **全組合回測**：將自動交易策略套用到過去歷史，逐交易日模擬最多 N 支股票的整體績效（總報酬、最大回撤、勝率、夏普比率）
 - **自動交易（模擬）**：依據訊號規則自動買進/賣出、停損停利，所有持倉與交易紀錄存於 PostgreSQL，重啟不丟失
@@ -60,10 +61,11 @@ api/
       backtest.py                # 單股回測 / 策略歷史驗證
       auto_trade.py              # 自動交易（模擬）
       scan.py                    # 今日訊號掃描
+      market.py                  # 全市場篩選
       settings.py                # 策略/系統設定
     control/                     # ── 控制區：外部資料撈取 + 商業邏輯 + 寫 DB ──
       scheduler.py               # 背景排程：容器啟動 + 每小時自動掃描/自動下單
-      data/fetcher.py            # 股價、基本面抓取與快取
+      data/fetcher.py            # 股價、基本面抓取與快取（含全市場批次報價/估值）
       data/news.py               # 個股相關新聞搜尋（透過 SearXNG，免 API key）
       llm/ollama_client.py       # Ollama 傳輸層（JSON mode、容錯解析）
       llm/analysis.py            # AI 分析：prompt、正規化、快取、二次驗證
@@ -74,6 +76,7 @@ api/
       strategy/auto_trade.py     # 自動交易（模擬）引擎
       strategy/full_backtest.py  # 全組合歷史回測
       strategy/ai_batch.py       # 批次 AI 分析（含補充持倉候選股共用邏輯）
+      strategy/market_screener.py # 全市場篩選頁：對篩選後子集現算技術指標
     db/portfolio_db.py           # ── 資料層（共用）：PostgreSQL 存取層 ──
     db/schema.sql                # 資料庫表結構
 
@@ -89,7 +92,7 @@ web/                              # ── 顯示區 ──
   static/js/
     core.js                      # 全域狀態、頁面路由、共用小工具
     pages/                       # 每個分頁一支檔案（home/stock-detail/ai-analysis/backtest/
-                                  # simulation/settings/full-backtest/scan/auto-trade/chat）
+                                  # simulation/settings/full-backtest/scan/market/auto-trade/chat）
 
 searxng/
   settings.yml                   # SearXNG 設定（啟用 JSON API，供 api 內部呼叫）
@@ -219,6 +222,8 @@ flowchart LR
 | GET | `/api/auto/orders` | 今日委託紀錄 |
 | GET | `/api/auto/history` | 資產曲線歷史 |
 | POST | `/api/full-backtest` | 全組合歷史回測 |
+| GET | `/api/market/screener` | 全市場（TWSE+TPEX）股票清單：價格/成交量/PE/PB/殖利率 |
+| POST | `/api/market/technical` | 對指定股票清單（上限 150 支）計算 RSI/KD 等技術指標 |
 | GET / PUT | `/api/config` | 讀取 / 更新策略設定 |
 
 ## 手續費假設
