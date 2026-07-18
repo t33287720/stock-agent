@@ -5,14 +5,26 @@
 
 ## 三層心智模型
 
-```
-┌─────────────┐      ┌─────────────┐      ┌──────────────────┐      ┌──────────────┐
-│  顯示區      │ ──▶  │   API 區     │ ──▶  │     控制區         │ ──▶  │   資料層      │
-│  web/       │ ◀──  │ backend/api/ │ ◀──  │ backend/control/  │ ◀──  │  backend/db/ │
-└─────────────┘      └─────────────┘      └──────────────────┘      └──────────────┘
- 從 DB/API 撈資料        前端可呼叫、         股票端邏輯：撈外部資料       純 DB 存取，
- 畫成畫面                讀寫 DB 的窗口        （股價/新聞/LLM）、          沒有外部 I/O、
-                                             算指標、跑策略、寫 DB        沒有商業邏輯
+```mermaid
+flowchart LR
+    subgraph W["顯示區　web/"]
+        direction TB
+        W1["從 DB/API 撈資料<br/>畫成畫面"]
+    end
+    subgraph A["API 區　backend/api/"]
+        direction TB
+        A1["前端可呼叫、<br/>讀寫 DB 的窗口"]
+    end
+    subgraph C["控制區　backend/control/"]
+        direction TB
+        C1["股票端邏輯：撈外部資料<br/>（股價/新聞/LLM）、<br/>算指標、跑策略、寫 DB"]
+    end
+    subgraph D["資料層　backend/db/"]
+        direction TB
+        D1["純 DB 存取，<br/>沒有外部 I/O、<br/>沒有商業邏輯"]
+    end
+
+    W <--> A <--> C <--> D
 ```
 
 - **顯示區**（`web/`）：畫面怎麼呈現。只呼叫 API，不直接碰資料庫、不含商業邏輯。
@@ -67,7 +79,7 @@ api/backend/
     strategy/auto_trade.py  自動交易（模擬）引擎
     strategy/full_backtest.py  全組合歷史回測
     strategy/ai_batch.py       批次 AI 分析（含補充持倉候選股共用邏輯）
-    strategy/market_screener.py  全市場篩選頁：對篩選後子集現算技術指標
+    strategy/market_screener.py  全市場篩選頁：對篩選後子集現算技術指標（KD等）與基本面（毛利率/EPS/ROE）
   db/                                     ── 資料層（共用，不屬於任何一區）──
     portfolio_db.py   PostgreSQL 存取層
     schema.sql
@@ -90,7 +102,7 @@ api/backend/
 | 模擬交易（個股頁內分頁） | `pages/simulation.js` | `api/auto_trade.py` | `control/strategy/auto_trade.py` | `db/portfolio_db.py` |
 | 自動交易總覽頁 | `pages/auto-trade.js` | `api/auto_trade.py` | `control/strategy/auto_trade.py` | `db/portfolio_db.py` |
 | 今日訊號掃描頁（讀取＋手動重試） | `pages/scan.js` | `api/scan.py` | `control/strategy/ai_batch.py`（重試邏輯） | `db/portfolio_db.py`（掃描結果快取） |
-| 全市場篩選（TWSE+TPEX 全市場清單 + 子集技術指標） | `pages/market.js` | `api/market.py` | `control/data/fetcher.py`（全市場批次報價/估值） + `control/strategy/market_screener.py`（子集技術指標） | — |
+| 全市場篩選（TWSE+TPEX 全市場清單 + 子集技術指標/基本面） | `pages/market.js` | `api/market.py` | `control/data/fetcher.py`（全市場批次報價/估值） + `control/strategy/market_screener.py`（子集技術指標 KD 篩選 + 子集基本面毛利率篩選） | — |
 | 背景自動掃描（非使用者觸發，每小時） | — | — | `control/scheduler.py` → `strategy/scanner.py`、`strategy/ai_batch.py`、`strategy/auto_trade.py` | `db/portfolio_db.py` |
 | 策略設定頁 | `pages/settings.js` | `api/settings.py` | `backend/config.py`（讀寫 `api/config/settings.json`） | — |
 

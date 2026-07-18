@@ -6,10 +6,10 @@
 
 ## 功能
 
-- **個股分析**：技術指標（RSI、MACD、KD、布林通道、SMA 等共 15 種）+ 基本面（P/E、P/B、ROE、殖利率）+ 相關新聞搜尋
+- **個股分析**：技術指標（RSI、MACD、KD、布林通道、SMA 等共 15 種）+ 基本面（P/E、P/B、ROE、毛利率、殖利率）+ 相關新聞搜尋
 - **個股 AI 分析**：技術指標 + 基本面 + 相關新聞交給本機 Ollama LLM，產生偏多/中性/偏空判斷、信心度、理由與風險，並經第二次驗證降低幻覺
 - **今日訊號掃描**：掃描追蹤股票池，找出今天觸發買進/賣出訊號的股票，可選擇加入 AI 信心評分（含當日新聞佐證）
-- **全市場篩選**：TWSE 上市 + TPEX 上櫃全市場（約 1900 支）依價格/成交量/PE/PB/殖利率即時篩選，篩選後子集（上限 150 支）可即時計算 RSI/KD 等技術指標
+- **全市場篩選**：TWSE 上市 + TPEX 上櫃全市場（約 1900 支）依價格/成交量/PE/PB/殖利率即時篩選；篩選後子集（上限 150 支）可即時計算 RSI/KD 等技術指標並套用 KD 低檔門檻，也可抓毛利率/EPS/ROE 並套用毛利率門檻（依序篩選對應早期 stock_choose_for_personal 專案的 KD → PER → 毛利率流程，但改用 TWSE/TPEX 官方 OpenAPI + yfinance，不再爬 goodinfo.tw）
 - **單股回測**：用歷史資料模擬單一股票的買賣訊號表現
 - **全組合回測**：將自動交易策略套用到過去歷史，逐交易日模擬最多 N 支股票的整體績效（總報酬、最大回撤、勝率、夏普比率）
 - **自動交易（模擬）**：依據訊號規則自動買進/賣出、停損停利，所有持倉與交易紀錄存於 PostgreSQL，重啟不丟失
@@ -34,8 +34,8 @@
 ### 技術棧
 
 - **前端**：PHP（單頁 `index.php`）+ 原生 JavaScript（`web/static/js/app.js`）+ Chart.js
-- **後端**：Python 3.11 / FastAPI / pandas / `ta`
-- **資料來源**：`twstock`（主）、`yfinance`（備援與基本面）、TWSE OpenAPI（股票清單、P/E、P/B、殖利率）、SearXNG（個股相關新聞）
+- **後端**：Python 3.11 / FastAPI / pandas / `ta`（KD 另自行實作台股慣用的 9 日 RSV + 2/3-1/3 平滑公式，非 `ta` 內建的通用版隨機指標）
+- **資料來源**：`twstock`（主）、`yfinance`（備援、基本面含毛利率/EPS/ROE）、TWSE/TPEX OpenAPI（股票清單、P/E、P/B、殖利率）、SearXNG（個股相關新聞）
 - **AI 分析**：本機 Ollama（預設 `qwen2.5:7b`），JSON mode + 兩階段（生成 → 二次驗證）降低幻覺
 - **資料庫**：PostgreSQL（`psycopg2`）
 
@@ -224,6 +224,7 @@ flowchart LR
 | POST | `/api/full-backtest` | 全組合歷史回測 |
 | GET | `/api/market/screener` | 全市場（TWSE+TPEX）股票清單：價格/成交量/PE/PB/殖利率 |
 | POST | `/api/market/technical` | 對指定股票清單（上限 150 支）計算 RSI/KD 等技術指標 |
+| POST | `/api/market/fundamentals` | 對指定股票清單（上限 150 支）抓毛利率/EPS/ROE |
 | GET / PUT | `/api/config` | 讀取 / 更新策略設定 |
 
 ## 手續費假設
