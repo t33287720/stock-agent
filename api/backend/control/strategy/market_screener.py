@@ -7,7 +7,7 @@
 """
 from concurrent.futures import ThreadPoolExecutor
 
-from backend.control.data.fetcher import get_stock_history
+from backend.control.data.fetcher import get_stock_history, get_fundamental
 from backend.control.analysis.technical import calculate_indicators, get_indicator_summary
 
 MAX_TICKERS = 150
@@ -27,6 +27,31 @@ def compute_technical_for_tickers(tickers: list[str]) -> dict[str, dict]:
                                             and summary.get("macd_signal") is not None
                                             and summary["macd"] > summary["macd_signal"])
             return ticker, summary
+        except Exception as e:
+            return ticker, {"error": str(e)[:200]}
+
+    with ThreadPoolExecutor(max_workers=15) as ex:
+        results = list(ex.map(_fetch, tickers))
+
+    return dict(results)
+
+
+def compute_fundamentals_for_tickers(tickers: list[str]) -> dict[str, dict]:
+    """對傳入的股票代號清單平行抓基本面（毛利率/EPS/ROE，沿用 get_fundamental() 的週快取），
+    回傳 {ticker: {"gross_margin", "eps", "roe"}|{"error":...}}。
+
+    對應舊 stock_choose_for_personal 篩選流程的最後一關（毛利率是否存在），
+    只在使用者已用 KD/PE/PB/殖利率 篩到 MAX_TICKERS 支以內的子集上現抓，不對全市場批次抓。
+    """
+
+    def _fetch(ticker: str):
+        try:
+            data = get_fundamental(ticker)
+            return ticker, {
+                "gross_margin": data.get("gross_margin"),
+                "eps": data.get("eps"),
+                "roe": data.get("roe"),
+            }
         except Exception as e:
             return ticker, {"error": str(e)[:200]}
 

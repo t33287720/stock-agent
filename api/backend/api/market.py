@@ -5,7 +5,11 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from backend.control.data.fetcher import get_market_screener
-from backend.control.strategy.market_screener import compute_technical_for_tickers, MAX_TICKERS
+from backend.control.strategy.market_screener import (
+    compute_technical_for_tickers,
+    compute_fundamentals_for_tickers,
+    MAX_TICKERS,
+)
 from backend.utils import TAIPEI
 
 router = APIRouter()
@@ -30,4 +34,12 @@ async def market_technical(body: TechnicalBody):
     if len(body.tickers) > MAX_TICKERS:
         raise HTTPException(400, f"最多一次計算 {MAX_TICKERS} 支股票，請先縮小篩選範圍（目前 {len(body.tickers)} 支）")
     results = compute_technical_for_tickers(body.tickers)
+    return {"results": results}
+
+
+@router.post("/api/market/fundamentals")
+async def market_fundamentals(body: TechnicalBody):
+    if len(body.tickers) > MAX_TICKERS:
+        raise HTTPException(400, f"最多一次計算 {MAX_TICKERS} 支股票，請先縮小篩選範圍（目前 {len(body.tickers)} 支）")
+    results = compute_fundamentals_for_tickers(body.tickers)
     return {"results": results}

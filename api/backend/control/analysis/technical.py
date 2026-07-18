@@ -41,9 +41,6 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
         # Momentum
         df["RSI"] = ta_lib.momentum.rsi(close, window=14)
-        stoch = ta_lib.momentum.StochasticOscillator(high, low, close)
-        df["K"] = stoch.stoch()
-        df["D"] = stoch.stoch_signal()
 
         # Volatility / Bollinger Bands
         bb = ta_lib.volatility.BollingerBands(close, window=20, window_dev=2)
@@ -69,11 +66,6 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
         loss = (-delta.clip(upper=0)).rolling(14).mean()
         df["RSI"] = 100 - 100 / (1 + gain / (loss + 1e-9))
 
-        lo14 = low.rolling(14).min()
-        hi14 = high.rolling(14).max()
-        df["K"] = 100 * (close - lo14) / (hi14 - lo14 + 1e-9)
-        df["D"] = df["K"].rolling(3).mean()
-
         sma20 = df["SMA_20"]
         std20 = close.rolling(20).std()
         df["BB_upper"] = sma20 + 2 * std20
@@ -81,6 +73,22 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
         df["BB_lower"] = sma20 - 2 * std20
 
         df["ATR"] = (high - low).rolling(14).mean()
+
+    # KD：台股慣用的 9 日 RSV + 2/3-1/3 遞迴平滑（goodinfo、XQ、多數券商看盤軟體採用的公式），
+    # 不用 `ta` 套件內建的 StochasticOscillator——那是 14 日 + SMA 平滑的通用版本，數值對不上台股慣例。
+    low9 = low.rolling(9, min_periods=1).min()
+    high9 = high.rolling(9, min_periods=1).max()
+    rsv = ((close - low9) / (high9 - low9 + 1e-9) * 100).clip(0, 100)
+    k_vals = np.empty(len(df))
+    d_vals = np.empty(len(df))
+    k_prev = d_prev = 50.0
+    for i, r in enumerate(rsv.to_numpy()):
+        k_prev = k_prev * 2 / 3 + r * 1 / 3
+        d_prev = d_prev * 2 / 3 + k_prev * 1 / 3
+        k_vals[i] = k_prev
+        d_vals[i] = d_prev
+    df["K"] = k_vals
+    df["D"] = d_vals
 
     # Derived: golden/death cross
     df["golden_cross"] = (df["SMA_20"] > df["SMA_60"]).astype(int)

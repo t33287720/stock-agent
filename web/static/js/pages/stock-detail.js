@@ -187,6 +187,7 @@ function renderFundTab(f) {
     { label: '殖利率',          tipKey: '殖利率', value: f.div_yield ? f.div_yield + '%' : '—' },
     { label: 'EPS',             tipKey: 'EPS', value: f.eps?.toFixed(2) ?? '—' },
     { label: 'ROE',             tipKey: 'ROE', value: f.roe ? f.roe + '%' : '—' },
+    { label: '毛利率',          tipKey: '毛利率', value: f.gross_margin ? f.gross_margin + '%' : '—' },
     { label: '市值',            tipKey: '',    value: f.market_cap ? formatMarketCap(f.market_cap) : '—' },
   ];
   return `<div class="card">

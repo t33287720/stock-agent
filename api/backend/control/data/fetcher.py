@@ -479,7 +479,7 @@ def get_fundamental(ticker: str) -> dict:
         return cached
 
     data = {"ticker": ticker, "pe": None, "pb": None, "div_yield": None,
-            "eps": None, "roe": None, "name": get_company_name(ticker)}
+            "eps": None, "roe": None, "gross_margin": None, "name": get_company_name(ticker)}
 
     try:
         date_str = datetime.today().strftime("%Y%m%d")
@@ -500,14 +500,24 @@ def get_fundamental(ticker: str) -> dict:
     except Exception as e:
         print(f"[fetcher] fundamental error for {ticker}: {e}")
 
-    # Supplement with yfinance info
+    # Supplement with yfinance info (TWSE 上市用 .TW，抓不到再試 .TWO 上櫃)
+    info = {}
+    for suffix in (".TW", ".TWO"):
+        try:
+            info = yf.Ticker(ticker + suffix).info
+            if info.get("trailingEps") is not None or info.get("regularMarketPrice") is not None:
+                break
+        except Exception:
+            info = {}
     try:
-        info = yf.Ticker(ticker + ".TW").info
         if not data["eps"]:
             data["eps"] = info.get("trailingEps")
         if not data["roe"]:
             roe_raw = info.get("returnOnEquity")
             data["roe"] = round(roe_raw * 100, 2) if roe_raw else None
+        if not data["gross_margin"]:
+            gm_raw = info.get("grossMargins")
+            data["gross_margin"] = round(gm_raw * 100, 2) if gm_raw else None
         if not data["pe"]:
             data["pe"] = info.get("trailingPE")
         data["market_cap"] = info.get("marketCap")
