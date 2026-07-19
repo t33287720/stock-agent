@@ -231,3 +231,7 @@ flowchart LR
 
 - 買進：0.1425% 手續費
 - 賣出：0.1425% 手續費 + 0.3% 證券交易稅
+
+## 資料庫管理
+
+想跨專案瀏覽 / 查詢這裡的 PostgreSQL，可以使用 [pgadmin-hub](https://github.com/t33287720/pgadmin-hub) 專案，專門整合全部的資料庫，不用替每個專案各裝一個 pgAdmin。
