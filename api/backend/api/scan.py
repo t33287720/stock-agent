@@ -74,7 +74,8 @@ async def get_scan_ai_progress():
     if result is None:
         return {"scan_date": None, "total": 0, "done": 0}
     scan_date = result.get("scan_date")
-    total = len(result.get("all_candidates", []))
+    all_candidates = await asyncio.to_thread(build_candidates_with_portfolio, result.get("all_candidates", []))
+    total = len(all_candidates)
     ai_results = await asyncio.to_thread(db.get_stock_ai_results_for_date, scan_date)
     done = sum(1 for r in ai_results.values() if not r.get("error"))
     return {"scan_date": scan_date, "total": total, "done": done, "running": _ai_retry_running}
