@@ -1,8 +1,42 @@
-# 台股分析系統
+# 台股選股
 
-以技術指標 + 規則式策略為核心的台股分析系統。提供個股技術/基本面分析、單股歷史回測、今日訊號掃描與全市場篩選。
+每天收盤後自動整理全部上市櫃股票（約 1900 支）的股價、技術指標與本益比／殖利率，
+用手機打開網頁就能看「今日推薦」，或用自己訂的規則篩出前幾名。
 
-> ⚠️ 本系統為學術研究用途，所有訊號與回測結果僅供參考，不構成投資建議。投資有風險，入市需謹慎。
+> ⚠️ 所有結果僅供參考，不構成投資建議。投資有風險，入市需謹慎。
+
+## 怎麼運作
+
+```
+GitHub Actions（每個交易日 17:30、20:30 自動執行）
+  pipeline/build.py   抓證交所、櫃買中心的全市場資料 → 算指標 → 產生 stocks-latest.json
+        ↓ 連同 app/ 一起發佈到 GitHub Pages
+手機 / 電腦瀏覽器
+  app/                讀 stocks-latest.json，在瀏覽器裡依規則篩選、排名
+```
+
+不需要伺服器、資料庫或登入。自訂規則存在各自的瀏覽器裡（可匯出／匯入）。
+
+| 資料夾 | 內容 |
+| --- | --- |
+| `pipeline/` | 每日資料流程：`sources.py` 抓資料、`indicators.py` 算指標、`build.py` 主程式 |
+| `app/` | 網頁 App（純 HTML/JS，不需打包）：`app.js` 裡的 `PRESETS` 就是「今日推薦」的規則 |
+| `.github/workflows/daily-data.yml` | 每日排程 |
+
+在自己電腦上跑一次：
+
+```bash
+pip install -r pipeline/requirements.txt
+python pipeline/build.py            # 第一次會回補 100 個交易日，約 10 分鐘；之後幾秒鐘
+cp app/* pipeline/data/ && python -m http.server -d pipeline/data 8000   # 打開 http://localhost:8000
+```
+
+---
+
+# 舊版：本機台股分析系統（docker）
+
+以下是原本在本機用 docker 執行的完整分析系統（個股分析、AI 分析、回測、全市場篩選）。
+新版 App 不依賴它。
 
 ## 功能
 

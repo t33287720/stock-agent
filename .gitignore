@@ -35,3 +35,6 @@ Thumbs.db
 
 # Claude Code
 .claude/settings.local.json
+
+# 每日資料流程的本機輸出（正式資料由 GitHub Actions 產生）
+pipeline/data/

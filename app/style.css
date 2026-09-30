@@ -1,0 +1,107 @@
+:root {
+  --bg: #f5f5f4;
+  --card: #ffffff;
+  --text: #1c1917;
+  --muted: #78716c;
+  --border: #e7e5e4;
+  --accent: #b91c1c;
+  --up: #dc2626;     /* 台股：紅漲 */
+  --down: #16a34a;   /*       綠跌 */
+  --highlight-bg: #fef3c7;
+  --highlight-text: #92400e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0c0a09;
+    --card: #1c1917;
+    --text: #f5f5f4;
+    --muted: #a8a29e;
+    --border: #292524;
+    --accent: #f87171;
+    --up: #f87171;
+    --down: #4ade80;
+    --highlight-bg: #422006;
+    --highlight-text: #fcd34d;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+  padding-bottom: calc(64px + env(safe-area-inset-bottom));
+}
+header, main { max-width: 640px; margin: 0 auto; padding: 0 16px; }
+header { padding-top: 16px; padding-bottom: 8px; }
+h1 { font-size: 22px; margin: 0; }
+h2 { font-size: 16px; margin: 0 0 2px; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.up { color: var(--up); }
+.down { color: var(--down); }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  margin: 12px 0;
+}
+.card-head { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+.actions { display: flex; gap: 4px; flex-shrink: 0; }
+.empty { padding: 8px 0; margin: 0; }
+
+.list { list-style: none; margin: 10px 0 0; padding: 0; }
+.stock { border-top: 1px solid var(--border); padding: 10px 0; cursor: pointer; }
+.stock-main { display: flex; justify-content: space-between; gap: 8px; }
+.price { display: flex; gap: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.highlight {
+  display: inline-block; margin-top: 4px; padding: 1px 8px; border-radius: 99px;
+  background: var(--highlight-bg); color: var(--highlight-text); font-size: 13px;
+}
+.detail {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px;
+  margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); font-size: 13px;
+}
+.detail > div { display: flex; justify-content: space-between; gap: 8px; }
+.detail a { grid-column: 1 / -1; color: var(--accent); margin-top: 6px; }
+
+button {
+  font: inherit; border: 1px solid var(--border); background: var(--card); color: var(--text);
+  border-radius: 8px; padding: 6px 12px; cursor: pointer;
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.ghost { background: transparent; font-size: 13px; padding: 4px 10px; white-space: nowrap; }
+button.danger { color: var(--up); }
+.toolbar { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+.toolbar.end { justify-content: flex-end; }
+
+input, select {
+  font: inherit; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px;
+}
+#search { width: 100%; margin: 12px 0 0; }
+
+.tabbar {
+  position: fixed; bottom: 0; left: 0; right: 0; display: flex;
+  background: var(--card); border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tabbar button { flex: 1; border: 0; border-radius: 0; padding: 14px 0; background: transparent; color: var(--muted); }
+.tabbar button.active { color: var(--accent); font-weight: 600; }
+
+dialog {
+  width: min(560px, calc(100vw - 24px)); max-height: 90vh; border: 0; border-radius: 14px;
+  background: var(--card); color: var(--text); padding: 16px;
+}
+dialog::backdrop { background: rgb(0 0 0 / 0.5); }
+dialog label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+dialog label.inline { flex-direction: row; align-items: center; gap: 6px; margin: 0; }
+.label { margin: 8px 0 6px; font-size: 14px; }
+.cond { display: flex; gap: 6px; margin-bottom: 8px; align-items: center; }
+.cond select { flex: 1; min-width: 0; }
+.cond .c-value { width: 80px; }
+#e-limit { width: 64px; }
