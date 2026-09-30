@@ -105,6 +105,13 @@ body {
 .stock-item .sname { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
 .stock-item .price { font-size: 12px; text-align: right; }
 .stock-item .price .val { font-weight: 600; }
+.stock-search-empty {
+  padding: 24px 16px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
 
 /* Cards */
 .card {
