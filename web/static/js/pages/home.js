@@ -35,18 +35,36 @@ function renderStockList(stocks, fetchedAt) {
         ${s.lots > 0 ? `<div style="font-size:10px;color:var(--text-muted)">${(s.lots/1000).toFixed(0)}千張</div>` : ''}
       </div>
     </div>
-  `).join('');
+  `).join('') + '<div id="stock-search-empty" class="stock-search-empty" style="display:none"></div>';
+  // 重新整理列表後沿用搜尋框目前的關鍵字，避免清單與搜尋框內容不一致
+  applyStockFilter();
+}
+
+// 依搜尋框關鍵字（代號或名稱，不分大小寫）過濾股票列表；無符合結果時顯示空狀態提示
+function applyStockFilter() {
+  const input = document.getElementById('search');
+  const raw = input ? input.value.trim() : '';
+  const q = raw.toLowerCase();
+  let shown = 0;
+  document.querySelectorAll('.stock-item').forEach(el => {
+    const match = el.dataset.ticker.toLowerCase().includes(q) || el.dataset.name.toLowerCase().includes(q);
+    el.style.display = match ? '' : 'none';
+    if (match) shown++;
+  });
+  const empty = document.getElementById('stock-search-empty');
+  if (!empty) return;
+  if (q && shown === 0) {
+    empty.innerHTML = `找不到符合「${escapeHtml(raw)}」的股票<br>` +
+      '<span style="font-size:11px">列表僅含成交量前 100 大，可改用代號或名稱的一部分搜尋</span>';
+    empty.style.display = '';
+  } else {
+    empty.style.display = 'none';
+  }
 }
 
 // 綁定左側搜尋框，依代號或名稱即時過濾股票列表
 function setupSearch() {
-  document.getElementById('search').addEventListener('input', function () {
-    const q = this.value.toLowerCase();
-    document.querySelectorAll('.stock-item').forEach(el => {
-      const match = el.dataset.ticker.includes(q) || el.dataset.name.includes(q);
-      el.style.display = match ? '' : 'none';
-    });
-  });
+  document.getElementById('search').addEventListener('input', applyStockFilter);
 }
 
 // ── Run log (首頁執行狀況列表) ──────────────────────────────────────────────────
