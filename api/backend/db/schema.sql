@@ -1,62 +1,11 @@
 -- 台股 AI 分析系統 — PostgreSQL Schema
+-- 與 portfolio_db.init_db() 相同（API 啟動時會自動建立，這份檔案供手動查閱／建立用）
 -- 執行方式: psql -U stockuser -d stockdb -f schema.sql
-
--- 投資組合設定（永遠只有一列，id = 1）
-CREATE TABLE IF NOT EXISTS portfolio_config (
-    id               INTEGER PRIMARY KEY DEFAULT 1,
-    initial_capital  NUMERIC(15,2) NOT NULL,               -- 初始資金
-    per_stock_budget NUMERIC(15,2) NOT NULL DEFAULT 10000, -- 每檔預算上限
-    cash             NUMERIC(15,2) NOT NULL,               -- 目前可用現金
-    started_at       DATE          NOT NULL,               -- 開始日期
-    last_updated     TIMESTAMP     NOT NULL,               -- 最後更新時間
-    CONSTRAINT single_portfolio CHECK (id = 1)
-);
-
--- 目前持倉（一股票一列，賣出後刪除）
-CREATE TABLE IF NOT EXISTS positions (
-    ticker       VARCHAR(10)   PRIMARY KEY,          -- 股票代號，例如 2330
-    name         VARCHAR(100),                       -- 股票名稱
-    shares       INTEGER       NOT NULL,             -- 持有股數
-    avg_cost     NUMERIC(10,2) NOT NULL,             -- 平均成本（元/股）
-    bought_at    DATE,                               -- 買入日期
-    entry_reason TEXT,                               -- 買入原因（訊號說明）
-    limit_sell   NUMERIC(10,2),                     -- 停利價
-    stop_loss    NUMERIC(10,2),                     -- 停損價
-    fee_paid     NUMERIC(10,2) DEFAULT 0            -- 已付手續費
-);
-
--- 所有成交紀錄（只增不刪的日誌）
-CREATE TABLE IF NOT EXISTS trades (
-    id           SERIAL        PRIMARY KEY,
-    trade_date   DATE          NOT NULL,             -- 成交日期
-    ticker       VARCHAR(10)   NOT NULL,             -- 股票代號
-    name         VARCHAR(100),                       -- 股票名稱
-    action       VARCHAR(10)   NOT NULL              -- 'buy' 或 'sell'
-                     CHECK (action IN ('buy','sell')),
-    shares       INTEGER       NOT NULL,             -- 成交股數
-    price        NUMERIC(10,2) NOT NULL,             -- 成交價
-    amount       NUMERIC(15,2),                     -- 成交金額（不含費）
-    fee          NUMERIC(10,2),                     -- 手續費（買：0.1425%，賣：0.4425%）
-    reason       TEXT,                               -- 出入場原因
-    pnl          NUMERIC(15,2),                     -- 損益（賣出才有）
-    pnl_pct      NUMERIC(8,4),                      -- 損益率（%）
-    entry_price  NUMERIC(10,2),                     -- 對應買入價（賣出時記錄）
-    entry_reason TEXT,                               -- 買入原因（賣出時記錄）
-    created_at   TIMESTAMP DEFAULT NOW()            -- 紀錄建立時間
-);
-
--- 每日資產曲線快照
-CREATE TABLE IF NOT EXISTS equity_history (
-    trade_date     DATE PRIMARY KEY,                 -- 日期（唯一）
-    equity         NUMERIC(15,2),                   -- 總資產（現金 + 持股市值）
-    cash           NUMERIC(15,2),                   -- 現金
-    position_value NUMERIC(15,2)                    -- 持股市值
-);
 
 -- 自動掃描狀態（永遠只有一列，id = 1）
 CREATE TABLE IF NOT EXISTS scan_state (
     id              INTEGER PRIMARY KEY DEFAULT 1,
-    last_scan_date  DATE,                            -- 上次掃描對應的交易日
+    last_scan_date  DATE,                            -- 上次完整處理過的資料日期
     last_checked_at TIMESTAMPTZ,                     -- 上次檢查時間
     CONSTRAINT single_scan_state CHECK (id = 1)
 );
@@ -68,28 +17,40 @@ CREATE TABLE IF NOT EXISTS scan_results (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 查詢用索引
-CREATE INDEX IF NOT EXISTS idx_trades_ticker ON trades(ticker);
-CREATE INDEX IF NOT EXISTS idx_trades_date   ON trades(trade_date);
+-- 批次 AI 分析結果（每支股票一列，每日覆寫）
+CREATE TABLE IF NOT EXISTS stock_ai_results (
+    ticker     VARCHAR(10) PRIMARY KEY,
+    name       VARCHAR(100),
+    scan_date  DATE NOT NULL,                        -- 分析對應的交易日
+    verdict    VARCHAR(10),                          -- 偏多 / 中性 / 偏空
+    confidence INTEGER,                              -- 信心度 0-100
+    result     JSONB NOT NULL,                       -- 完整分析結果
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 首頁執行狀況列表：每天各階段（資料／訊號掃描／AI 分析）的執行狀態
+CREATE TABLE IF NOT EXISTS daily_run_log (
+    run_date         DATE PRIMARY KEY,
+    data_status      VARCHAR(10),
+    data_date        DATE,
+    scan_status      VARCHAR(10),
+    scan_started_at  TIMESTAMPTZ,
+    scan_done_at     TIMESTAMPTZ,
+    scan_error       TEXT,
+    ai_status        VARCHAR(10),
+    ai_started_at    TIMESTAMPTZ,
+    ai_done_at       TIMESTAMPTZ,
+    ai_done_count    INTEGER,
+    ai_total_count   INTEGER,
+    ai_error         TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_stock_ai_results_scan_date ON stock_ai_results(scan_date);
 
 -- ── 常用查詢範例 ──────────────────────────────────────────────────────────────
 
--- 查看目前投資組合狀態
--- SELECT * FROM portfolio_config;
+-- 查看最近 10 天的執行狀況
+-- SELECT run_date, data_status, scan_status, ai_status FROM daily_run_log ORDER BY run_date DESC LIMIT 10;
 
--- 查看所有持倉
--- SELECT ticker, name, shares, avg_cost, limit_sell, stop_loss, bought_at FROM positions;
-
--- 查看最近10筆交易
--- SELECT trade_date, ticker, action, shares, price, pnl, pnl_pct, reason FROM trades ORDER BY id DESC LIMIT 10;
-
--- 統計勝率
--- SELECT
---     COUNT(*) FILTER (WHERE action='sell')                         AS total_trades,
---     COUNT(*) FILTER (WHERE action='sell' AND pnl > 0)            AS wins,
---     ROUND(AVG(pnl_pct) FILTER (WHERE action='sell'), 2)          AS avg_pnl_pct,
---     ROUND(SUM(pnl)     FILTER (WHERE action='sell'), 0)          AS total_pnl
--- FROM trades;
-
--- 查看資產曲線（最近30天）
--- SELECT trade_date, equity, cash, position_value FROM equity_history ORDER BY trade_date DESC LIMIT 30;
+-- 查看最新一次掃描的買入候選
+-- SELECT scan_date, jsonb_array_length(result->'buy_candidates') AS buys FROM scan_results ORDER BY scan_date DESC LIMIT 1;

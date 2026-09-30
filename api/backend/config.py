@@ -17,10 +17,7 @@ DEFAULT_CONFIG = {
         "take_profit_pct": 15,
         "ma_short": 20,
         "ma_long": 60,
-        "initial_capital": 1000000,
-        "max_per_trade": 0,
-        "ai_min_confidence_buy": 50,
-        "ai_min_confidence_sell": 60
+        "initial_capital": 1000000
     }
 }
 

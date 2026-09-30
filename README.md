@@ -1,6 +1,6 @@
 # 台股分析系統
 
-以技術指標 + 規則式策略為核心的台股分析與模擬交易系統。提供個股技術/基本面分析、單股與全組合歷史回測、今日訊號掃描，以及全自動的模擬交易（紙上交易）。
+以技術指標 + 規則式策略為核心的台股分析系統。提供個股技術/基本面分析、單股歷史回測、今日訊號掃描與全市場篩選。
 
 > ⚠️ 本系統為學術研究用途，所有訊號與回測結果僅供參考，不構成投資建議。投資有風險，入市需謹慎。
 
@@ -11,8 +11,6 @@
 - **今日訊號掃描**：掃描追蹤股票池，找出今天觸發買進/賣出訊號的股票，可選擇加入 AI 信心評分（含當日新聞佐證）
 - **全市場篩選**：TWSE 上市 + TPEX 上櫃全市場（約 1900 支）依價格/成交量/PE/PB/殖利率即時篩選；篩選後子集（上限 150 支）可即時計算 RSI/KD 等技術指標並套用 KD 低檔門檻，也可抓毛利率/EPS/ROE 並套用毛利率門檻（依序篩選對應早期 stock_choose_for_personal 專案的 KD → PER → 毛利率流程，但改用 TWSE/TPEX 官方 OpenAPI + yfinance，不再爬 goodinfo.tw）
 - **單股回測**：用歷史資料模擬單一股票的買賣訊號表現
-- **全組合回測**：將自動交易策略套用到過去歷史，逐交易日模擬最多 N 支股票的整體績效（總報酬、最大回撤、勝率、夏普比率）
-- **自動交易（模擬）**：依據訊號規則自動買進/賣出、停損停利，所有持倉與交易紀錄存於 PostgreSQL，重啟不丟失
 
 更完整的資料流說明可參考系統內建的[系統架構圖](web/system_map.html)（`/stock/system_map.html`），
 或 [ARCHITECTURE.md](ARCHITECTURE.md)（顯示區／控制區／API 區的檔案對照表與除錯指引）。
@@ -24,8 +22,8 @@
 | 服務 | 說明 | 對外連接埠 |
 | --- | --- | --- |
 | `web` | PHP 8.3 + Nginx，提供前端頁面並把 `/api/` 反向代理到 `api` | 8080 |
-| `api` | Python FastAPI 後端，負責抓資料、計算指標、產生訊號、回測、自動交易 | （僅內部，由 `web` 代理） |
-| `db` | PostgreSQL 15，儲存自動交易的投資組合、持倉、交易紀錄、資產曲線 | （僅內部） |
+| `api` | Python FastAPI 後端，負責抓資料、計算指標、產生訊號、回測 | （僅內部，由 `web` 代理） |
+| `db` | PostgreSQL 15，儲存每日訊號掃描結果、批次 AI 分析結果、排程執行狀況 | （僅內部） |
 | `searxng` | 自架 SearXNG，供 `api` 搜尋個股相關新聞，免 API key | （僅內部） |
 | `adminer` | PostgreSQL 管理介面 | 8082 |
 
@@ -58,13 +56,12 @@ api/
     api/                         # ── API 區：純路由，只做 request → 呼叫控制區/DB → response ──
       stocks.py                  # 股票列表 / 個股技術+基本面 / 新聞 / AI 分析
       chat.py                    # 問股票聊天
-      backtest.py                # 單股回測 / 策略歷史驗證
-      auto_trade.py              # 自動交易（模擬）
+      backtest.py                # 單股回測
       scan.py                    # 今日訊號掃描
       market.py                  # 全市場篩選
       settings.py                # 策略/系統設定
     control/                     # ── 控制區：外部資料撈取 + 商業邏輯 + 寫 DB ──
-      scheduler.py               # 背景排程：容器啟動 + 每小時自動掃描/自動下單
+      scheduler.py               # 背景排程：容器啟動 + 每小時自動掃描 / 批次 AI 分析
       data/fetcher.py            # 股價、基本面抓取與快取（含全市場批次報價/估值）
       data/news.py               # 個股相關新聞搜尋（透過 SearXNG，免 API key）
       llm/ollama_client.py       # Ollama 傳輸層（JSON mode、容錯解析）
@@ -73,9 +70,7 @@ api/
       analysis/technical.py      # 技術指標計算
       strategy/signals.py        # 買賣訊號、單股回測、手續費常數
       strategy/scanner.py        # 今日訊號掃描
-      strategy/auto_trade.py     # 自動交易（模擬）引擎
-      strategy/full_backtest.py  # 全組合歷史回測
-      strategy/ai_batch.py       # 批次 AI 分析（含補充持倉候選股共用邏輯）
+      strategy/ai_batch.py       # 批次 AI 分析
       strategy/market_screener.py # 全市場篩選頁：對篩選後子集現算技術指標
     db/portfolio_db.py           # ── 資料層（共用）：PostgreSQL 存取層 ──
     db/schema.sql                # 資料庫表結構
@@ -92,7 +87,7 @@ web/                              # ── 顯示區 ──
   static/js/
     core.js                      # 全域狀態、頁面路由、共用小工具
     pages/                       # 每個分頁一支檔案（home/stock-detail/ai-analysis/backtest/
-                                  # simulation/settings/full-backtest/scan/market/auto-trade/chat）
+                                  # settings/scan/market/chat）
 
 searxng/
   settings.yml                   # SearXNG 設定（啟用 JSON API，供 api 內部呼叫）
@@ -126,7 +121,7 @@ flowchart LR
 
 ### 自動掃描背景排程
 
-容器啟動時立即執行一次，之後每小時檢查是否有新交易日資料；取代原本手動的「今日訊號掃描」「早盤掃描」按鈕。
+容器啟動時立即執行一次，之後每小時檢查是否有新交易日資料；取代原本手動的「今日訊號掃描」按鈕。
 
 ```mermaid
 flowchart LR
@@ -136,20 +131,8 @@ flowchart LR
     Check -- 否 --> State[(scan_state 表)]
     Check -- 是 --> Scan[control/strategy/scanner.scan_today]
     Scan --> AI[control/strategy/ai_batch.run_batch_ai_analysis<br/>視設定 auto_scan_with_ai]
-    AI --> Results[(scan_results 表)]
-    Results --> Morning[control/strategy/auto_trade.morning_scan<br/>若自動交易已初始化]
-    Morning --> Positions[(positions / trades 表)]
-    Morning --> State
-```
-
-### 策略歷史驗證（全組合回測）
-
-```mermaid
-flowchart LR
-    UI[pages/full-backtest.js<br/>策略歷史驗證頁] -->|POST /api/full-backtest| API[api/backtest.py]
-    API --> FullBT[control/strategy/full_backtest.py]
-    FullBT --> Fetcher[control/data/fetcher.py<br/>批次抓歷史 K 線]
-    FullBT --> Signals[control/strategy/signals.py<br/>generate_signals / run_backtest]
+    AI --> Results[(scan_results / stock_ai_results 表)]
+    Results --> State
 ```
 
 ### 策略設定
@@ -195,7 +178,7 @@ flowchart LR
 
 ## 設定
 
-策略參數（停損/停利百分比、RSI 門檻、均線週期、初始模擬資金等）可在前端「策略設定」頁面修改，會寫入 `api/config/settings.json`（`strategy` 區塊）。
+策略參數（單股回測用的停損/停利百分比、初始資金，以及 RSI 門檻、均線週期等）可在前端「策略設定」頁面修改，會寫入 `api/config/settings.json`（`strategy` 區塊）。
 
 `settings` 區塊：
 - `cache_hours`：股價/基本面快取時數（預設 6 小時）
@@ -215,13 +198,6 @@ flowchart LR
 | POST | `/api/stock/{ticker}/ai-analysis` | 個股 AI 分析（本機 Ollama，快取 1 小時，`force=true` 強制重新產生） |
 | POST | `/api/backtest/{ticker}` | 單股歷史回測 |
 | GET | `/api/scan/today` | 今日訊號掃描結果（由背景排程每小時自動產生並存入 DB，前端僅讀取） |
-| GET | `/api/auto/status` | 自動交易投資組合狀態 |
-| POST | `/api/auto/init` | 初始化自動交易投資組合 |
-| POST | `/api/auto/trade` | 執行單筆自動交易（買/賣/自動判斷） |
-| POST | `/api/auto/cancel/{ticker}` | 撤銷持倉 |
-| GET | `/api/auto/orders` | 今日委託紀錄 |
-| GET | `/api/auto/history` | 資產曲線歷史 |
-| POST | `/api/full-backtest` | 全組合歷史回測 |
 | GET | `/api/market/screener` | 全市場（TWSE+TPEX）股票清單：價格/成交量/PE/PB/殖利率 |
 | POST | `/api/market/technical` | 對指定股票清單（上限 150 支）計算 RSI/KD 等技術指標 |
 | POST | `/api/market/fundamentals` | 對指定股票清單（上限 150 支）抓毛利率/EPS/ROE |

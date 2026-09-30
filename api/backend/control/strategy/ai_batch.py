@@ -1,46 +1,19 @@
 """
 批次 ReAct AI 分析 — 對今日訊號掃描抓到的股票逐一執行完整的個股 AI 分析流程
 （與 `/api/stock/{ticker}/ai-analysis` 相同：最多 10 輪延伸搜尋 + 二次驗證），
-結果存入 stock_ai_results，供今日訊號掃描頁面與自動交易系統使用。
+結果存入 stock_ai_results，供今日訊號掃描頁面使用。
 
 Ollama 為單一 GPU，無法平行處理多個 LLM 請求，因此序列執行。
 已有當日結果的股票會跳過，容器重啟後可從中斷處繼續。
 """
 import logging
 
-from backend.control.data.fetcher import get_fundamental, get_stock_history
+from backend.control.data.fetcher import get_fundamental
 from backend.control.data.news import get_stock_news
-from backend.control.analysis.technical import calculate_indicators, get_indicator_summary
 from backend.control.llm.analysis import analyze_stock_stream
 import backend.db.portfolio_db as db
 
 logger = logging.getLogger(__name__)
-
-
-def build_candidates_with_portfolio(all_candidates: list[dict]) -> list[dict]:
-    """在 all_candidates 之外，補上目前持倉中但不在今日掃描名單內的股票，
-    一併送 AI 分析（今日排程掃描與手動重試皆會呼叫，避免兩處各寫一份而行為分歧）。"""
-    candidates = list(all_candidates)
-    scanned_tickers = {c["ticker"] for c in candidates}
-    portfolio = db.load_portfolio()
-    if not portfolio:
-        return candidates
-    for ticker, pos in portfolio.get("positions", {}).items():
-        if ticker in scanned_tickers:
-            continue
-        try:
-            df = get_stock_history(ticker, 90)
-            if df.empty or len(df) < 20:
-                continue
-            df = calculate_indicators(df)
-            candidates.append({
-                "ticker":    ticker,
-                "name":      pos.get("name", ticker),
-                "technical": get_indicator_summary(df),
-            })
-        except Exception:
-            logger.warning("[ai_batch] 無法取得持倉 %s 技術資料，略過", ticker)
-    return candidates
 
 
 def run_batch_ai_analysis(all_candidates: list[dict], scan_date: str) -> dict:

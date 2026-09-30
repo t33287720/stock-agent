@@ -14,7 +14,7 @@ async function showScanPage() {
     <div style="margin-bottom:20px">
       <h2 style="font-size:18px;font-weight:700">🔍 今日訊號掃描</h2>
       <div style="font-size:12px;color:var(--text-muted);margin-top:4px">
-        條件與自動交易相同 · 買入：RSI≤65 + 今日買訊 · 賣出：近3日賣訊 · 系統每小時自動檢查資料並掃描
+        買入：RSI≤65 + 今日買訊 · 賣出：近3日賣訊 · 系統每小時自動檢查資料並掃描
       </div>
     </div>
     <div id="scan-result">

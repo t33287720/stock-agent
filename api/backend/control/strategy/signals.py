@@ -1,7 +1,7 @@
 """
 Signal generation and backtesting.
 
-Taiwan fee rates (also exported for use by simulation.py and auto_trade.py):
+Taiwan fee rates:
   Buy:  0.1425% commission
   Sell: 0.1425% commission + 0.3% securities transaction tax
 """
@@ -13,7 +13,7 @@ import pandas as pd
 
 from backend.config import load_config
 
-# Taiwan stock fee constants — imported by auto_trade.py and full_backtest.py
+# Taiwan stock fee constants
 COMMISSION = 0.001425   # 0.1425%  — applies both sides
 TAX = 0.003             # 0.3%     — sell only (securities transaction tax)
 
@@ -284,12 +284,11 @@ def run_backtest(ticker: str, df: pd.DataFrame, with_fee: bool = True) -> Backte
     )
 
 
-# ── Shared hard-rule filters (used by scanner, auto_trade, full_backtest) ──────
+# ── Shared hard-rule filters (used by scanner) ─────────────────────────────────
 
 def should_buy(row, rsi_threshold: float = 65) -> bool:
     """
     Hard buy rule: latest bar must have signal==1 AND RSI below threshold.
-    All three systems (scanner, auto_trade, full_backtest) call this.
     """
     try:
         rsi = float(row.get("RSI", 50) or 50)
@@ -303,28 +302,11 @@ def should_sell(recent_rows: list) -> tuple[bool, str]:
     """
     Hard sell rule: most recent non-zero signal in the provided rows is -1.
     Returns (triggered, reason_string).
-    All three systems (scanner, auto_trade, full_backtest) call this.
     """
     sig_rows = [r for r in recent_rows if int(r.get("signal", 0)) != 0]
     if sig_rows and int(sig_rows[-1].get("signal", 0)) == -1:
         return True, str(sig_rows[-1].get("signal_reason", "賣出訊號"))
     return False, ""
-
-
-def check_exit(pos: dict, price: float, recent_rows: list) -> tuple:
-    """
-    Shared EOD exit rule used by morning_scan and full_backtest (signal-sell branch).
-    Checks TP/SL against close price first, then calls should_sell.
-    Returns (exit_price, reason) or (None, "").
-    """
-    if price >= pos.get("limit_sell", float("inf")):
-        return pos["limit_sell"], f"觸發停利（≥ {pos['limit_sell']:.2f}）"
-    if price <= pos.get("stop_loss", 0.0):
-        return pos["stop_loss"], f"觸發停損（≤ {pos['stop_loss']:.2f}）"
-    triggered, reason = should_sell(recent_rows)
-    if triggered:
-        return price, reason
-    return None, ""
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────

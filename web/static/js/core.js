@@ -60,7 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ── Pages / Tabs ──────────────────────────────────────────────────────────────
 // 切換左側導覽對應的主要頁面區塊（顯示目前頁、隱藏其餘）
 function showPage(page) {
-  ['welcome', 'analysis', 'settings', 'auto', 'full-backtest', 'scan', 'market', 'chat'].forEach(p => {
+  ['welcome', 'analysis', 'settings', 'scan', 'market', 'chat'].forEach(p => {
     const el = document.getElementById(`page-${p}`);
     if (el) el.style.display = p === page ? '' : 'none';
   });
@@ -69,9 +69,9 @@ function showPage(page) {
 }
 
 
-// 切換個股分析頁的分頁籤，並視需要延遲載入模擬交易狀態／相關新聞
+// 切換個股分析頁的分頁籤，並視需要延遲載入相關新聞
 function switchTab(tab) {
-  const all = ['chart', 'signals', 'fundamental', 'backtest', 'simulation', 'ai'];
+  const all = ['chart', 'signals', 'fundamental', 'backtest', 'ai'];
   all.forEach(t => {
     const el = document.getElementById(`tab-${t}`);
     if (el) el.style.display = t === tab ? '' : 'none';
@@ -79,8 +79,6 @@ function switchTab(tab) {
   document.querySelectorAll('#tabs .tab').forEach((el, i) => {
     el.classList.toggle('active', all[i] === tab);
   });
-  // Lazy-load simulation when tab is opened
-  if (tab === 'simulation') loadSimulation();
   // Lazy-load related news (once per ticker)
   if (tab === 'fundamental' && newsLoadedFor !== currentTicker) {
     newsLoadedFor = currentTicker;

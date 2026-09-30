@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException
 
 from backend.db import portfolio_db as db
-from backend.control.strategy.ai_batch import run_batch_ai_analysis, build_candidates_with_portfolio
+from backend.control.strategy.ai_batch import run_batch_ai_analysis
 from backend.utils import TAIPEI, is_trading_day
 
 router = APIRouter()
@@ -42,7 +42,7 @@ async def get_scan_cache():
 
 @router.get("/api/scan/calendar")
 async def get_scan_calendar(days: int = 30):
-    """首頁執行狀況列表：每天的資料新鮮度／今日訊號掃描／AI批次分析／自動交易 狀態。"""
+    """首頁執行狀況列表：每天的資料新鮮度／今日訊號掃描／AI批次分析 狀態。"""
     rows = await asyncio.to_thread(db.get_run_log, days)
     row_map = {r["run_date"]: r for r in rows}
     today = datetime.now(TAIPEI).date()
@@ -61,9 +61,6 @@ async def get_scan_calendar(days: int = 30):
             "ai":    {"status": r.get("ai_status"), "started_at": r.get("ai_started_at"),
                       "done_at": r.get("ai_done_at"), "done_count": r.get("ai_done_count"),
                       "total_count": r.get("ai_total_count"), "error": r.get("ai_error")},
-            "trade": {"status": r.get("trade_status"), "started_at": r.get("trade_started_at"),
-                      "done_at": r.get("trade_done_at"), "summary": r.get("trade_summary"),
-                      "error": r.get("trade_error")},
         })
     return {"days": out}
 
@@ -74,10 +71,10 @@ async def get_scan_ai_progress():
     if result is None:
         return {"scan_date": None, "total": 0, "done": 0}
     scan_date = result.get("scan_date")
-    all_candidates = await asyncio.to_thread(build_candidates_with_portfolio, result.get("all_candidates", []))
-    total = len(all_candidates)
+    tickers = {c["ticker"] for c in result.get("all_candidates", [])}
     ai_results = await asyncio.to_thread(db.get_stock_ai_results_for_date, scan_date)
-    done = sum(1 for r in ai_results.values() if not r.get("error"))
+    done = sum(1 for t, r in ai_results.items() if t in tickers and not r.get("error"))
+    total = len(tickers)
     return {"scan_date": scan_date, "total": total, "done": done, "running": _ai_retry_running}
 
 
@@ -93,7 +90,7 @@ async def retry_scan_ai_analysis():
         raise HTTPException(400, "尚無掃描結果")
 
     scan_date = result.get("scan_date")
-    all_candidates = await asyncio.to_thread(build_candidates_with_portfolio, result.get("all_candidates", []))
+    all_candidates = result.get("all_candidates", [])
 
     async def _run():
         global _ai_retry_running

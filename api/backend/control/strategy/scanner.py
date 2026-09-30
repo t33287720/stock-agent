@@ -17,7 +17,7 @@ from backend.utils import TAIPEI
 def scan_today(max_candidates: int = 80) -> dict:
     """
     掃描前 N 支股票，回傳今日買入/賣出候選清單。
-    並行抓取資料，使用與 auto_trade / full_backtest 完全相同的硬性規則篩選。
+    並行抓取資料，套用 signals.py 的 should_buy / should_sell 硬性規則篩選。
     """
     stocks = get_top100_stocks()
     candidates = [s for s in stocks if s.get("ticker")][:max_candidates]
@@ -86,7 +86,7 @@ def scan_today(max_candidates: int = 80) -> dict:
             "sma60":        round(sma60, 2),
         }
 
-        # ── 買入候選：與 auto_trade 相同的 should_buy 硬性規則 ──────────────
+        # ── 買入候選：should_buy 硬性規則 ─────────────────────────────────────
         if should_buy(last_row):
             buy_candidates.append({
                 **entry,
@@ -95,7 +95,7 @@ def scan_today(max_candidates: int = 80) -> dict:
                 "is_today":      True,
             })
         else:
-            # ── 賣出候選：與 auto_trade 相同的 should_sell 硬性規則 ──────────
+            # ── 賣出候選：should_sell 硬性規則 ────────────────────────────────
             recent = list(df.iloc[-3:].to_dict("records")) if len(df) >= 3 else list(df.to_dict("records"))
             triggered, reason = should_sell(recent)
             if triggered:

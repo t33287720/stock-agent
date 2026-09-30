@@ -19,7 +19,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from backend.control.scheduler import scan_loop
-from backend.api import stocks, chat, backtest, auto_trade, scan, settings, market
+from backend.api import stocks, chat, backtest, scan, settings, market
+from backend.db import portfolio_db as db
 
 app = FastAPI(title="台股 AI 分析系統", version="1.0.0")
 
@@ -37,7 +38,8 @@ if static_path.exists():
 
 @app.on_event("startup")
 async def _start_background_scanner():
-    """容器啟動時立即執行一次資料更新檢查，之後每小時檢查一次。"""
+    """建立資料表後，容器啟動時立即執行一次資料更新檢查，之後每小時檢查一次。"""
+    db.init_db()
     asyncio.create_task(scan_loop())
 
 
@@ -49,8 +51,7 @@ async def root():
 # ── API 區路由掛載：每支檔案對應一個功能，詳見 backend/api/ 底下的檔案 ──────────────
 app.include_router(stocks.router)       # 股票列表 / 個股技術+基本面分析 / 新聞 / AI 分析
 app.include_router(chat.router)         # 問股票聊天
-app.include_router(backtest.router)     # 單股回測 / 策略歷史驗證
-app.include_router(auto_trade.router)   # 自動交易（模擬）
+app.include_router(backtest.router)     # 單股回測
 app.include_router(scan.router)         # 今日訊號掃描
 app.include_router(settings.router)     # 策略/系統設定
 app.include_router(market.router)       # 全市場篩選

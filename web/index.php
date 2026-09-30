@@ -49,18 +49,6 @@
         </svg>
         全市場篩選
       </button>
-      <button class="nav-item" data-page="auto" onclick="showAutoPage()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-        </svg>
-        自動交易系統
-      </button>
-      <button class="nav-item" data-page="full-backtest" onclick="showFullBacktestPage()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-        </svg>
-        策略歷史驗證
-      </button>
       <button class="nav-item" onclick="loadStockList()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>
@@ -149,13 +137,6 @@
       </div>
     </div>
 
-    <!-- Full backtest page -->
-    <div id="page-full-backtest" style="display:none">
-      <div id="fb-content">
-        <div class="loading"><div class="spinner"></div></div>
-      </div>
-    </div>
-
     <!-- Scan page -->
     <div id="page-scan" style="display:none">
       <div id="scan-content">
@@ -166,13 +147,6 @@
     <!-- Market screener page -->
     <div id="page-market" style="display:none">
       <div id="market-content">
-        <div class="loading"><div class="spinner"></div></div>
-      </div>
-    </div>
-
-    <!-- Auto trading page -->
-    <div id="page-auto" style="display:none">
-      <div id="auto-page-content">
         <div class="loading"><div class="spinner"></div></div>
       </div>
     </div>
@@ -192,10 +166,6 @@
           <div class="form-group">
             <label>初始模擬資金 (NTD)</label>
             <input type="number" id="initial-capital" class="form-control" value="100000">
-          </div>
-          <div class="form-group">
-            <label>每筆最高金額 (NTD，0 = 不限制)</label>
-            <input type="number" id="max-per-trade" class="form-control" value="0" min="0" placeholder="0 = 不限制（用95%資金）">
           </div>
         </div>
         <div class="form-row">
@@ -251,28 +221,12 @@
         <div class="form-group" style="margin-top:8px">
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
             <input type="checkbox" id="auto-scan-with-ai" style="width:14px;height:14px">
-            每日對前150大成交量股票進行完整 AI 分析，並套用於自動交易
+            每日對前150大成交量股票進行完整 AI 分析
           </label>
           <p style="font-size:11px;color:var(--text-muted);margin-top:4px">
             偵測到新交易日時，對前 150 大成交量股票逐一執行完整 AI 分析（最多 10 輪延伸搜尋），
-            結果存入資料庫供今日訊號掃描顯示，並供自動交易系統過濾買入/觸發提早賣出（可能需數十分鐘至數小時）。
+            結果存入資料庫供今日訊號掃描顯示（可能需數十分鐘至數小時）。
           </p>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>AI 買入信心門檻 (%)</label>
-            <input type="number" id="ai-min-confidence-buy" class="form-control" value="50" min="0" max="100" step="5">
-            <p style="font-size:11px;color:var(--text-muted);margin-top:4px">
-              買入訊號股票的 AI 信心低於此值，或 AI 判斷為「偏空」時，自動交易會略過該買入。
-            </p>
-          </div>
-          <div class="form-group">
-            <label>AI 提早賣出信心門檻 (%)</label>
-            <input type="number" id="ai-min-confidence-sell" class="form-control" value="60" min="0" max="100" step="5">
-            <p style="font-size:11px;color:var(--text-muted);margin-top:4px">
-              持倉股票的 AI 判斷為「偏空」且信心 ≥ 此值時，自動交易會提早賣出（即使尚未觸發停損停利）。
-            </p>
-          </div>
         </div>
         <div style="margin-top:8px">
           <button class="btn btn-primary" onclick="saveSettings()">💾 儲存設定</button>
@@ -295,12 +249,9 @@
 <script src="/stock/static/js/pages/stock-detail.js"></script>
 <script src="/stock/static/js/pages/ai-analysis.js"></script>
 <script src="/stock/static/js/pages/backtest.js"></script>
-<script src="/stock/static/js/pages/simulation.js"></script>
 <script src="/stock/static/js/pages/settings.js"></script>
-<script src="/stock/static/js/pages/full-backtest.js"></script>
 <script src="/stock/static/js/pages/scan.js"></script>
 <script src="/stock/static/js/pages/market.js"></script>
-<script src="/stock/static/js/pages/auto-trade.js"></script>
 <script src="/stock/static/js/pages/chat.js"></script>
 </body>
 </html>

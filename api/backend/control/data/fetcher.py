@@ -76,36 +76,6 @@ def last_trading_day_str() -> str:
     return d.strftime("%Y-%m-%d")
 
 
-def get_latest_close(ticker: str) -> tuple[float, str]:
-    """
-    Single source of truth for the latest close price.
-
-    Used by BOTH execute_trade (buy price) and auto_portfolio_summary
-    (current price), so buy price == display price at the moment of purchase.
-
-    Cache key includes the trading day → auto-invalidates each new day.
-    Falls back to yesterday when today's close isn't published yet.
-    """
-    ltd = last_trading_day_str()
-    cache_key = f"close_{ticker}_{ltd}"
-    cached = _read_cache(cache_key)
-    if cached:
-        # Discard if the price date is more than 5 calendar days old —
-        # means the cache was populated before the data source had today's data.
-        gap = (datetime.today().date() - datetime.strptime(cached["date"], "%Y-%m-%d").date())
-        if gap.days <= 5:
-            return cached["price"], cached["date"]
-
-    df = get_stock_history(ticker, 10)
-    if df.empty:
-        raise ValueError(f"無法取得 {ticker} 的收盤價")
-
-    price    = float(df["Close"].iloc[-1])
-    date_str = str(df.index[-1])[:10]
-    _write_cache(cache_key, {"price": price, "date": date_str})
-    return price, date_str
-
-
 def _fetch_all_twse_quotes() -> list[dict]:
     """回傳 TWSE STOCK_DAY_ALL 全部上市股票當日價格/成交量（不排序、不截斷）。"""
     url = f"{TWSE_BASE}/exchangeReport/STOCK_DAY_ALL"

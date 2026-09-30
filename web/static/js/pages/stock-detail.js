@@ -1,8 +1,8 @@
 /* =========================================================
    個股分析頁 — 圖表 / 訊號明細 / 基本面 / 新聞 分頁
    呼叫 API：GET /api/stock/{ticker}、GET /api/stock/{ticker}/news
-   「回測」「模擬交易」「AI 分析」分頁邏輯分別在
-   pages/backtest.js、pages/simulation.js、pages/ai-analysis.js。
+   「回測」「AI 分析」分頁邏輯分別在
+   pages/backtest.js、pages/ai-analysis.js。
    ========================================================= */
 
 // ── Main stock analysis ───────────────────────────────────────────────────────
@@ -70,7 +70,6 @@ function renderAnalysis(data) {
       <div class="tab" onclick="switchTab('signals')">🔔 訊號明細</div>
       <div class="tab" onclick="switchTab('fundamental')">📋 基本面</div>
       <div class="tab" onclick="switchTab('backtest')">🧪 回測</div>
-      <div class="tab" onclick="switchTab('simulation')">💰 模擬交易</div>
       <div class="tab" onclick="switchTab('ai')">🤖 AI 分析</div>
     </div>
 
@@ -104,9 +103,6 @@ function renderAnalysis(data) {
     </div>
     <div id="tab-backtest" style="display:none">
       ${renderBtPlaceholder()}
-    </div>
-    <div id="tab-simulation" style="display:none">
-      <div id="sim-content"><div class="loading" style="padding:40px 0;color:var(--text-muted)">載入模擬交易狀態...</div></div>
     </div>
     <div id="tab-ai" style="display:none">
       ${renderAiTabPlaceholder()}

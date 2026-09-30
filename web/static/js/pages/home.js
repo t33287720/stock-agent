@@ -63,7 +63,7 @@ async function loadRunLog() {
   }
 }
 
-// 依階段種類（data/scan/ai/trade）與狀態值決定圓點顏色：灰＝未執行、黃＝執行中、綠＝完成、紅＝異常
+// 依階段種類（data/scan/ai）與狀態值決定圓點顏色：灰＝未執行、黃＝執行中、綠＝完成、紅＝異常
 function _runDotClass(kind, status) {
   if (!status) return 'gray';
   if (status === 'running') return 'yellow';
@@ -100,14 +100,6 @@ function renderRunLog(days) {
         obj.done_at ? `完成：${obj.done_at.replace('T', ' ').slice(0, 16)}` : null,
         obj.error ? `⚠ ${obj.error}` : null,
       ];
-    } else if (kind === 'trade') {
-      const s = obj.summary || {};
-      tipLines = [
-        s.buy_count != null ? `買入 ${s.buy_count} 筆 · 賣出 ${s.sell_count} 筆` : null,
-        obj.done_at ? `完成：${obj.done_at.replace('T', ' ').slice(0, 16)}` : null,
-        obj.error ? `⚠ ${obj.error}` : null,
-        (s.errors || []).length ? `⚠ ${s.errors.join('；')}` : null,
-      ];
     } else {
       tipLines = [
         obj.started_at ? `開始：${obj.started_at.replace('T', ' ').slice(0, 16)}` : null,
@@ -130,7 +122,6 @@ function renderRunLog(days) {
         ${phaseDot('data', '資料', d.data)}
         ${phaseDot('scan', '訊號掃描', d.scan)}
         ${phaseDot('ai', 'AI分析', d.ai)}
-        ${phaseDot('trade', '自動交易', d.trade)}
       </div>
       ${!d.is_trading_day ? '<div style="font-size:11px;color:var(--text-muted)">非交易日</div>' : ''}
     </div>
