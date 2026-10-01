@@ -3,14 +3,12 @@
 透過自架的 SearXNG（docker-compose 中的 searxng 服務）查詢新聞，免 API key。
 結果以 JSON 檔快取於 cache/，TTL 較短（30 分鐘）以保持新聞時效性。
 """
-import json
 import os
-import time
 from datetime import datetime, timedelta, timezone
 
 import requests
 
-from backend.control.data.fetcher import CACHE_DIR
+from backend import cache
 
 NEWS_CACHE_TTL = 1800  # 30 分鐘
 NEWS_MAX_AGE_DAYS = 1  # 只保留 24 小時內的新聞
@@ -27,29 +25,6 @@ def _parse_date(date_str):
         return d
     except ValueError:
         return None
-
-
-def _news_cache_path(ticker: str):
-    return CACHE_DIR / f"news_{ticker}.json"
-
-
-def _read_news_cache(ticker: str):
-    path = _news_cache_path(ticker)
-    if not path.exists():
-        return None
-    if time.time() - path.stat().st_mtime > NEWS_CACHE_TTL:
-        return None
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, IOError):
-        path.unlink(missing_ok=True)
-        return None
-
-
-def _write_news_cache(ticker: str, data) -> None:
-    with open(_news_cache_path(ticker), "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False)
 
 
 def _searxng_search(query: str, limit: int, page: int = 1) -> list[dict]:
@@ -101,7 +76,7 @@ def get_stock_news(ticker: str, name: str, limit: int = 10) -> list[dict]:
     SearXNG 的「一般」分類搜尋常會挾帶其他公司的報價頁、不相關公告等雜訊，
     故額外多抓一些結果，再過濾成標題或內文有實際提到公司名稱／代號的才留下。
     """
-    cached = _read_news_cache(ticker)
+    cached = cache.read_json(f"news_{ticker}", NEWS_CACHE_TTL)
     if cached is not None:
         return cached
 
@@ -111,7 +86,7 @@ def get_stock_news(ticker: str, name: str, limit: int = 10) -> list[dict]:
         if name in ((r.get("title") or "") + (r.get("body") or ""))
         or ticker in ((r.get("title") or "") + (r.get("body") or ""))
     ][:limit]
-    _write_news_cache(ticker, results)
+    cache.write_json(f"news_{ticker}", results)
     return results
 
 

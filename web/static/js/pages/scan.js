@@ -170,6 +170,22 @@ function _pollAiRetry() {
   }, 5000);
 }
 
+// 展開「完整流程」時才向後端抓該股票的 AI trace，抓過一次就不再重抓
+async function loadScanTrace(el, ticker) {
+  if (!el.open || el.dataset.loaded) return;
+  el.dataset.loaded = '1';
+  const body = el.querySelector('.scan-trace-body');
+  try {
+    const r = await fetch(`${API}/api/scan/ai-trace/${encodeURIComponent(ticker)}`);
+    if (!r.ok) throw new Error(r.status);
+    const { trace } = await r.json();
+    body.innerHTML = renderTraceSteps(trace, 10);
+  } catch {
+    delete el.dataset.loaded;
+    body.innerHTML = '<span style="font-size:10px;color:var(--danger,#f85149)">載入失敗，請收合後再試一次</span>';
+  }
+}
+
 // 渲染掃描候選清單中的單一股票列（技術指標欄位 + 可展開的 AI 分析詳情）
 function scanRow(s, type, aiEnriched) {
   const rsiColor = s.rsi < 30 ? '#3fb950' : s.rsi > 70 ? '#f85149' : s.rsi > 60 ? '#e3b341' : 'var(--text-secondary)';
@@ -192,7 +208,7 @@ function scanRow(s, type, aiEnriched) {
     const summary = escapeHtml(s.ai_summary || '');
     const reasons = s.ai_key_reasons || [];
     const risks = s.ai_risks || [];
-    const trace = s.ai_trace || [];
+    const traceSteps = s.ai_trace_steps || 0;
     const newsList = s.ai_news || [];
 
     const newsHtml = newsList.length ? `
@@ -203,15 +219,12 @@ function scanRow(s, type, aiEnriched) {
           </div>
         </div>` : '';
 
-    const traceHtml = trace.length ? `
-        <details style="margin-top:4px">
-          <summary style="cursor:pointer;color:var(--text-muted);font-size:10px">🔬 完整流程（${trace.length} 步）</summary>
-          <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
-            ${trace.map((step, i) => `
-            <details style="border:1px solid var(--border);border-radius:6px;padding:6px 8px">
-              <summary style="font-size:10px;font-weight:600;cursor:pointer">步驟 ${i + 1}：${escapeHtml(step.label)}</summary>
-              <div style="margin-top:6px">${renderStepBody(step)}</div>
-            </details>`).join('')}
+    // trace 很大（含每輪完整 prompt），列表只帶步數，展開時才另外抓
+    const traceHtml = traceSteps ? `
+        <details style="margin-top:4px" ontoggle="loadScanTrace(this, '${s.ticker}')">
+          <summary style="cursor:pointer;color:var(--text-muted);font-size:10px">🔬 完整流程（${traceSteps} 步）</summary>
+          <div class="scan-trace-body" style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+            <span style="font-size:10px;color:var(--text-muted)">載入中...</span>
           </div>
         </details>` : '';
 

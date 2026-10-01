@@ -11,17 +11,21 @@ daily_run_log     — 首頁執行狀況列表 (data / scan / ai phases per day)
 
 import json
 import os
+import threading
 import psycopg2
 import psycopg2.extras
-import pytz
+import psycopg2.pool
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+from backend.utils import TAIPEI
+
 load_dotenv(Path(__file__).parent.parent.parent / ".env")
 
-TAIPEI = pytz.timezone("Asia/Taipei")
+SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
 
 # ── Connection ─────────────────────────────────────────────────────────────────
@@ -43,72 +47,51 @@ def _db_cfg() -> dict:
     return cfg["database"]
 
 
+# 前端每幾秒就會輪詢一次，每次查詢都重新 TCP 連線 + 認證很浪費，改用連線池重複使用。
+_POOL_MAX = 20
+_pool: psycopg2.pool.ThreadedConnectionPool | None = None
+_pool_lock = threading.Lock()
+
+
+def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    global _pool
+    if _pool is None:
+        with _pool_lock:
+            if _pool is None:
+                cfg = _db_cfg()
+                _pool = psycopg2.pool.ThreadedConnectionPool(
+                    1, _POOL_MAX,
+                    host=cfg["host"], port=cfg["port"],
+                    dbname=cfg["name"], user=cfg["user"], password=cfg["password"],
+                )
+    return _pool
+
+
 @contextmanager
 def _conn():
-    cfg = _db_cfg()
-    c = psycopg2.connect(
-        host=cfg["host"], port=cfg["port"],
-        dbname=cfg["name"], user=cfg["user"], password=cfg["password"],
-    )
+    pool = _get_pool()
+    c = pool.getconn()
     try:
         yield c
         c.commit()
     except Exception:
-        c.rollback()
+        try:
+            c.rollback()
+        except psycopg2.Error:
+            pass  # 連線已斷（例如 DB 重啟），下面 putconn 會把它丟掉
         raise
     finally:
-        c.close()
+        # 斷掉的連線不放回池子，下次 getconn 會自動建新的
+        pool.putconn(c, close=bool(c.closed))
 
 
 # ── Schema creation ────────────────────────────────────────────────────────────
 
 def init_db() -> None:
-    """Create all tables (idempotent)."""
-    ddl = """
-    CREATE TABLE IF NOT EXISTS scan_state (
-        id              INTEGER PRIMARY KEY DEFAULT 1,
-        last_scan_date  DATE,
-        last_checked_at TIMESTAMPTZ,
-        CONSTRAINT single_scan_state CHECK (id = 1)
-    );
-
-    CREATE TABLE IF NOT EXISTS scan_results (
-        scan_date  DATE PRIMARY KEY,
-        result     JSONB NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-
-    CREATE TABLE IF NOT EXISTS stock_ai_results (
-        ticker     VARCHAR(10) PRIMARY KEY,
-        name       VARCHAR(100),
-        scan_date  DATE NOT NULL,
-        verdict    VARCHAR(10),
-        confidence INTEGER,
-        result     JSONB NOT NULL,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-
-    CREATE TABLE IF NOT EXISTS daily_run_log (
-        run_date         DATE PRIMARY KEY,
-        data_status      VARCHAR(10),
-        data_date        DATE,
-        scan_status      VARCHAR(10),
-        scan_started_at  TIMESTAMPTZ,
-        scan_done_at     TIMESTAMPTZ,
-        scan_error       TEXT,
-        ai_status        VARCHAR(10),
-        ai_started_at    TIMESTAMPTZ,
-        ai_done_at       TIMESTAMPTZ,
-        ai_done_count    INTEGER,
-        ai_total_count   INTEGER,
-        ai_error         TEXT
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_stock_ai_results_scan_date ON stock_ai_results(scan_date);
-    """
+    """Create all tables (idempotent). DDL 只維護在 schema.sql 一份。"""
     with _conn() as c:
         with c.cursor() as cur:
-            cur.execute(ddl)
+            cur.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
 
 
 # ── Scan state / results ───────────────────────────────────────────────────────
@@ -169,12 +152,17 @@ def save_scan_result(scan_date: str, result: dict) -> None:
             """, (scan_date, json.dumps(result, ensure_ascii=False)))
 
 
-def get_latest_scan_result() -> dict | None:
-    """Return the most recent scan_results row's `result` JSON, or None."""
+def get_latest_scan_result(include_all_candidates: bool = True) -> dict | None:
+    """Return the most recent scan_results row's `result` JSON, or None.
+
+    all_candidates 含每支候選股的完整技術指標，只有重新跑 AI 分析時才需要；
+    給前端顯示用時傳 include_all_candidates=False，直接在 DB 端去掉，少傳一大段 JSON。
+    """
+    result_expr = "result" if include_all_candidates else "result - 'all_candidates'"
     with _conn() as c:
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("""
-                SELECT scan_date, result, created_at
+            cur.execute(f"""
+                SELECT scan_date, {result_expr} AS result, created_at
                 FROM   scan_results
                 ORDER  BY scan_date DESC
                 LIMIT  1
@@ -304,11 +292,17 @@ def save_stock_ai_result(ticker: str, name: str, scan_date: str, result: dict) -
 
 
 def get_stock_ai_results_for_date(scan_date: str) -> dict:
-    """Return {ticker: {**result, 'name': ...}} for all AI results matching scan_date."""
+    """Return {ticker: {**result, 'name': ..., 'trace_steps': int}} for all AI results matching scan_date.
+
+    不含 trace：trace 存了每一輪送給 LLM 的完整 prompt，一筆可能就上百 KB，
+    列表頁只需要步數，展開時再用 get_stock_ai_trace() 單獨抓。
+    """
     with _conn() as c:
         with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
-                SELECT ticker, name, result
+                SELECT ticker, name,
+                       result - 'trace' AS result,
+                       COALESCE(jsonb_array_length(result->'trace'), 0) AS trace_steps
                 FROM   stock_ai_results
                 WHERE  scan_date = %s
             """, (scan_date,))
@@ -316,24 +310,52 @@ def get_stock_ai_results_for_date(scan_date: str) -> dict:
             for row in cur.fetchall():
                 entry = dict(row["result"])
                 entry["name"] = row["name"]
+                entry["trace_steps"] = row["trace_steps"]
                 out[row["ticker"]] = entry
             return out
 
 
-def get_stock_ai_result(ticker: str) -> dict | None:
-    """Return a single ticker's latest AI analysis result, or None."""
+def count_stock_ai_done(scan_date: str, tickers: list[str]) -> int:
+    """scan_date 當天、tickers 之中已成功完成 AI 分析（沒有 error）的數量。"""
     with _conn() as c:
-        with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        with c.cursor() as cur:
             cur.execute("""
-                SELECT ticker, name, scan_date, result
+                SELECT COUNT(*)
                 FROM   stock_ai_results
-                WHERE  ticker = %s
-            """, (ticker,))
+                WHERE  scan_date = %s
+                  AND  ticker = ANY(%s)
+                  AND  NOT COALESCE((result->>'error')::boolean, FALSE)
+            """, (scan_date, tickers))
+            return cur.fetchone()[0]
+
+
+def get_latest_scan_tickers() -> tuple[str, list[str]] | None:
+    """回傳最新一次掃描的 (scan_date, all_candidates 的股票代號清單)，不載入整份 result。"""
+    with _conn() as c:
+        with c.cursor() as cur:
+            cur.execute("""
+                SELECT scan_date,
+                       ARRAY(SELECT x->>'ticker'
+                             FROM jsonb_array_elements(COALESCE(result->'all_candidates', '[]'::jsonb)) x)
+                FROM   scan_results
+                ORDER  BY scan_date DESC
+                LIMIT  1
+            """)
             row = cur.fetchone()
             if not row:
                 return None
-            entry = dict(row["result"])
-            entry["name"] = row["name"]
-            entry["scan_date"] = str(row["scan_date"])
-            return entry
+            return str(row[0]), list(row[1])
+
+
+def get_stock_ai_trace(ticker: str, scan_date: str) -> list | None:
+    """單一股票在 scan_date 的 AI 分析完整流程（trace），查無則回傳 None。"""
+    with _conn() as c:
+        with c.cursor() as cur:
+            cur.execute("""
+                SELECT result->'trace'
+                FROM   stock_ai_results
+                WHERE  ticker = %s AND scan_date = %s
+            """, (ticker, scan_date))
+            row = cur.fetchone()
+            return row[0] if row else None
 

@@ -1,5 +1,5 @@
 -- 台股 AI 分析系統 — PostgreSQL Schema
--- 與 portfolio_db.init_db() 相同（API 啟動時會自動建立，這份檔案供手動查閱／建立用）
+-- API 啟動時 portfolio_db.init_db() 會直接執行這份檔案（唯一的 DDL 來源）；也可手動執行
 -- 執行方式: psql -U stockuser -d stockdb -f schema.sql
 
 -- 自動掃描狀態（永遠只有一列，id = 1）

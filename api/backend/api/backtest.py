@@ -1,4 +1,6 @@
 """API 區：單股回測。"""
+import asyncio
+
 from fastapi import APIRouter, HTTPException
 
 from backend.control.data.fetcher import get_stock_history
@@ -12,10 +14,10 @@ router = APIRouter()
 
 @router.post("/api/backtest/{ticker}")
 async def backtest(ticker: str, days: int = 365, with_fee: bool = True):
-    df = get_stock_history(ticker, days)
+    df = await asyncio.to_thread(get_stock_history, ticker, days)
     if df.empty:
         raise HTTPException(404, f"找不到 {ticker} 的歷史資料")
-    df = calculate_indicators(df)
-    result = run_backtest(ticker, df, with_fee=with_fee)
+    df = await asyncio.to_thread(calculate_indicators, df)
+    result = await asyncio.to_thread(run_backtest, ticker, df, with_fee=with_fee)
     return vars(result)
 

@@ -6,6 +6,7 @@ import asyncio
 import logging
 
 from backend.config import load_config
+from backend import cache
 from backend.control.data.fetcher import last_trading_day_str
 from backend.db import portfolio_db as db
 from backend.control.strategy.ai_batch import run_batch_ai_analysis
@@ -35,6 +36,10 @@ def run_scan_cycle() -> None:
     還沒有資料的「今天」），系統執行狀況列表就會出現資料=stale（紅）但
     AI=done（綠）的矛盾畫面。
     """
+    removed = cache.purge_old()
+    if removed:
+        logger.info("[scheduler] 清除 %d 個過期快取檔", removed)
+
     run_date = last_trading_day_str()
     state = db.get_scan_state()
 

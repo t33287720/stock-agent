@@ -5,6 +5,8 @@ Falls back to manual pandas calculations if ta is unavailable.
 import numpy as np
 import pandas as pd
 
+from backend.utils import to_float
+
 try:
     import ta as ta_lib
     HAS_TA = True
@@ -24,7 +26,6 @@ def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
     close = df["Close"]
     high = df["High"]
     low = df["Low"]
-    volume = df["Volume"]
 
     if HAS_TA:
         # Trend
@@ -103,14 +104,8 @@ def get_indicator_summary(df: pd.DataFrame) -> dict:
     row = df.iloc[-1]
 
     def val(col):
-        v = row.get(col)
-        if v is None:
-            return None
-        try:
-            f = float(v)
-            return None if np.isnan(f) else round(f, 4)
-        except (TypeError, ValueError):
-            return None
+        f = to_float(row.get(col))
+        return None if f is None else round(f, 4)
 
     return {
         "close": val("Close"),

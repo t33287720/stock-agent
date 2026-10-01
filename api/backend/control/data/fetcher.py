@@ -7,10 +7,7 @@ Sources:
   - Cache          → JSON files under /cache/ (TTL = cache_hours)
 """
 import difflib
-import json
-import time
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Optional
 
 import pandas as pd
@@ -18,11 +15,9 @@ import requests
 import yfinance as yf
 import twstock
 
+from backend import cache
 from backend.config import load_config
-from backend.utils import TAIPEI, is_trading_day
-
-CACHE_DIR = Path(__file__).parent.parent.parent.parent / "cache"
-CACHE_DIR.mkdir(exist_ok=True)
+from backend.utils import TAIPEI, is_trading_day, to_float
 
 TWSE_BASE = "https://openapi.twse.com.tw/v1"
 TWSE_BWIBBU = "https://www.twse.com.tw/exchangeReport/BWIBBU_d"
@@ -32,38 +27,20 @@ HEADERS = {
 }
 
 
+def _now() -> datetime:
+    """台北時間的現在。容器跑在 UTC，直接用 datetime.today() 在台北 00:00–08:00 會差一天。"""
+    return datetime.now(TAIPEI)
+
+
 # ── cache helpers ──────────────────────────────────────────────────────────────
 
-def _cache_path(key: str) -> Path:
-    return CACHE_DIR / f"{key}.json"
-
-
 def _read_cache(key: str) -> Optional[dict | list]:
-    path = _cache_path(key)
-    if not path.exists():
-        return None
-    cfg = load_config()
-    ttl = cfg["settings"].get("cache_hours", 6) * 3600
-    if time.time() - path.stat().st_mtime > ttl:
-        return None
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, IOError):
-        path.unlink(missing_ok=True)
-        return None
-
-
-class _DateEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if hasattr(obj, "isoformat"):
-            return obj.isoformat()
-        return super().default(obj)
+    ttl = load_config()["settings"].get("cache_hours", 6) * 3600
+    return cache.read_json(key, ttl)
 
 
 def _write_cache(key: str, data) -> None:
-    with open(_cache_path(key), "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, cls=_DateEncoder)
+    cache.write_json(key, data)
 
 
 # ── stock list ─────────────────────────────────────────────────────────────────
@@ -76,31 +53,37 @@ def last_trading_day_str() -> str:
     return d.strftime("%Y-%m-%d")
 
 
-def _fetch_all_twse_quotes() -> list[dict]:
-    """回傳 TWSE STOCK_DAY_ALL 全部上市股票當日價格/成交量（不排序、不截斷）。"""
-    url = f"{TWSE_BASE}/exchangeReport/STOCK_DAY_ALL"
-    resp = requests.get(url, headers=HEADERS, timeout=15)
-    resp.raise_for_status()
-    raw = resp.json()
-
+def _parse_quotes(items: list[dict], code_key: str, name_key: str,
+                  shares_key: str, close_key: str, value_key: str) -> list[dict]:
+    """把證交所／櫃買中心「全市場當日行情」轉成統一格式；欄位缺漏或無法解析的列直接略過。"""
     stocks = []
-    for item in raw:
+    for item in items:
         try:
-            shares = float(str(item.get("TradeVolume", "0")).replace(",", ""))
-            lots = shares / 1000  # 張數 = 股數 / 1000
-            close_str = str(item.get("ClosingPrice", "0")).replace(",", "")
-            close = float(close_str) if close_str not in ("", "--") else 0.0
+            shares = float(str(item.get(shares_key, "0")).replace(",", ""))
+            close_str = str(item.get(close_key, "0")).replace(",", "")
             stocks.append({
-                "ticker": item["Code"],
-                "name": item["Name"],
-                "close": close,
+                "ticker": item[code_key],
+                "name": item[name_key],
+                "close": float(close_str) if close_str not in ("", "--") else 0.0,
                 "volume": shares,
-                "lots": round(lots, 0),           # 張數
-                "trade_value": float(str(item.get("TradeValue", "0")).replace(",", "")),
+                "lots": round(shares / 1000, 0),           # 張數 = 股數 / 1000
+                "trade_value": float(str(item.get(value_key, "0")).replace(",", "")),
             })
         except (ValueError, KeyError):
             continue
     return stocks
+
+
+def _get_json(url: str):
+    resp = requests.get(url, headers=HEADERS, timeout=15)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _fetch_all_twse_quotes() -> list[dict]:
+    """回傳 TWSE STOCK_DAY_ALL 全部上市股票當日價格/成交量（不排序、不截斷）。"""
+    return _parse_quotes(_get_json(f"{TWSE_BASE}/exchangeReport/STOCK_DAY_ALL"),
+                         "Code", "Name", "TradeVolume", "ClosingPrice", "TradeValue")
 
 
 def get_top100_stocks() -> list[dict]:
@@ -126,20 +109,17 @@ def get_top100_stocks() -> list[dict]:
 
 def _fetch_all_twse_valuation() -> dict[str, dict]:
     """回傳 TWSE BWIBBU_d 全部上市股票的 PE/PB/殖利率（不帶 stockNo，一次拿全市場）。"""
-    date_str = datetime.today().strftime("%Y%m%d")
-    url = f"{TWSE_BWIBBU}?response=json&date={date_str}&selectType=ALL"
-    resp = requests.get(url, headers=HEADERS, timeout=15)
-    resp.raise_for_status()
-    raw = resp.json()
+    date_str = _now().strftime("%Y%m%d")
+    raw = _get_json(f"{TWSE_BWIBBU}?response=json&date={date_str}&selectType=ALL")
 
     out = {}
     # fields: 證券代號, 證券名稱, 收盤價, 殖利率(%), 股利年度, 本益比, 股價淨值比, 財報年/季
     for row in raw.get("data", []):
         try:
             out[row[0]] = {
-                "pe":        _safe_float(row[5]),
-                "pb":        _safe_float(row[6]),
-                "div_yield": _safe_float(row[3]),
+                "pe":        to_float(row[5]),
+                "pb":        to_float(row[6]),
+                "div_yield": to_float(row[3]),
             }
         except (IndexError, TypeError):
             continue
@@ -148,36 +128,13 @@ def _fetch_all_twse_valuation() -> dict[str, dict]:
 
 def _fetch_all_tpex_quotes() -> list[dict]:
     """回傳 TPEX 全部上櫃股票當日價格/成交量。"""
-    url = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes"
-    resp = requests.get(url, headers=HEADERS, timeout=15)
-    resp.raise_for_status()
-    raw = resp.json()
-
-    stocks = []
-    for item in raw:
-        try:
-            shares = float(str(item.get("TradingShares", "0")).replace(",", ""))
-            close_str = str(item.get("Close", "0")).replace(",", "")
-            close = float(close_str) if close_str not in ("", "--") else 0.0
-            stocks.append({
-                "ticker": item["SecuritiesCompanyCode"],
-                "name": item["CompanyName"],
-                "close": close,
-                "volume": shares,
-                "lots": round(shares / 1000, 0),
-                "trade_value": float(str(item.get("TransactionAmount", "0")).replace(",", "")),
-            })
-        except (ValueError, KeyError):
-            continue
-    return stocks
+    return _parse_quotes(_get_json("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes"),
+                         "SecuritiesCompanyCode", "CompanyName", "TradingShares", "Close", "TransactionAmount")
 
 
 def _fetch_all_tpex_valuation() -> dict[str, dict]:
     """回傳 TPEX 全部上櫃股票的 PE/PB/殖利率。"""
-    url = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_peratio_analysis"
-    resp = requests.get(url, headers=HEADERS, timeout=15)
-    resp.raise_for_status()
-    raw = resp.json()
+    raw = _get_json("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_peratio_analysis")
 
     out = {}
     for item in raw:
@@ -185,9 +142,9 @@ def _fetch_all_tpex_valuation() -> dict[str, dict]:
         if not ticker:
             continue
         out[ticker] = {
-            "pe":        _safe_float(item.get("PriceEarningRatio")),
-            "pb":        _safe_float(item.get("PriceBookRatio")),
-            "div_yield": _safe_float(item.get("YieldRatio")),
+            "pe":        to_float(item.get("PriceEarningRatio")),
+            "pb":        to_float(item.get("PriceBookRatio")),
+            "div_yield": to_float(item.get("YieldRatio")),
         }
     return out
 
@@ -247,7 +204,7 @@ def _load_company_name_map() -> dict[str, str]:
 
     用公司簡稱（而非 yfinance 的英文 longName）才能讓 SearXNG 搜尋到較多中文新聞結果。
     """
-    cache_key = f"company_names_{datetime.today().strftime('%Y-%m')}"
+    cache_key = f"company_names_{_now().strftime('%Y-%m')}"
     cached = _read_cache(cache_key)
     if cached:
         return cached
@@ -259,9 +216,7 @@ def _load_company_name_map() -> dict[str, str]:
     ]
     for url, code_key, name_key in sources:
         try:
-            resp = requests.get(url, headers=HEADERS, timeout=15)
-            resp.raise_for_status()
-            for item in resp.json():
+            for item in _get_json(url):
                 code, name = item.get(code_key), item.get(name_key)
                 if code and name:
                     name_map[code] = name
@@ -270,12 +225,9 @@ def _load_company_name_map() -> dict[str, str]:
 
     # 補上 ETF 等不在公司基本資料裡的代號（來自每日成交資料，含中文名稱）
     try:
-        resp = requests.get(f"{TWSE_BASE}/exchangeReport/STOCK_DAY_ALL", headers=HEADERS, timeout=15)
-        resp.raise_for_status()
-        for item in resp.json():
-            code, name = item.get("Code"), item.get("Name")
-            if code and name and code not in name_map:
-                name_map[code] = name
+        for item in _fetch_all_twse_quotes():
+            if item["ticker"] not in name_map:
+                name_map[item["ticker"]] = item["name"]
     except Exception as e:
         print(f"[fetcher] STOCK_DAY_ALL name list error: {e}")
 
@@ -355,7 +307,7 @@ def get_stock_history(ticker: str, days: int = 365) -> pd.DataFrame:
         # Discard cache if the newest data is more than 5 calendar days old —
         # means the cache was populated before the source had today's data.
         if not df.empty:
-            gap = (datetime.today().date() - df.index[-1].date())
+            gap = (_now().date() - df.index[-1].date())
             if gap.days >= 5:
                 cached = None
         if cached is not None:
@@ -376,7 +328,7 @@ def get_stock_history(ticker: str, days: int = 365) -> pd.DataFrame:
 def _twstock_history(ticker: str, days: int) -> pd.DataFrame:
     """Download OHLCV via twstock (official TWSE/TPEX API). Auto-selects exchange."""
     try:
-        start = datetime.today() - timedelta(days=days + 35)  # extra buffer for weekends
+        start = _now() - timedelta(days=days + 35)  # extra buffer for weekends
         s = twstock.Stock(ticker)
         s.fetch_from(start.year, start.month)
 
@@ -400,7 +352,7 @@ def _twstock_history(ticker: str, days: int) -> pd.DataFrame:
         # fall through to yfinance which has more up-to-date data
         if not df.empty:
             last_date = df.index[-1].to_pydatetime().replace(tzinfo=None)
-            if (datetime.today() - last_date).days > 10:
+            if (_now().replace(tzinfo=None) - last_date).days > 10:
                 print(f"[fetcher] twstock data for {ticker} is stale (last: {last_date.date()}), trying yfinance")
                 return pd.DataFrame()
 
@@ -442,7 +394,7 @@ def _yf_history(yf_ticker: str, days: int) -> pd.DataFrame:
 def get_fundamental(ticker: str) -> dict:
     """Fetch P/E, P/B, dividend yield from TWSE BWIBBU endpoint."""
     # 以週為 TTL：同一週內不重抓（基本面每週更新一次已足夠）
-    week_str  = datetime.today().strftime("%Y-W%W")
+    week_str  = _now().strftime("%Y-W%W")
     cache_key = f"fund_{ticker}_{week_str}"
     cached = _read_cache(cache_key)
     if cached:
@@ -452,20 +404,16 @@ def get_fundamental(ticker: str) -> dict:
             "eps": None, "roe": None, "gross_margin": None, "name": get_company_name(ticker)}
 
     try:
-        date_str = datetime.today().strftime("%Y%m%d")
+        date_str = _now().strftime("%Y%m%d")
         url = (f"{TWSE_BWIBBU}?response=json"
                f"&date={date_str}&stockNo={ticker}&selectType=ALL")
-        resp = requests.get(url, headers=HEADERS, timeout=15)
-        resp.raise_for_status()
-        raw = resp.json()
-
-        rows = raw.get("data", [])
+        rows = _get_json(url).get("data", [])
         if rows:
             row = rows[-1]
             # TWSE columns: 0=date, 1=yield, 2=dividend, 3=PE, 4=PB
-            data["div_yield"] = _safe_float(row[1])
-            data["pe"] = _safe_float(row[3])
-            data["pb"] = _safe_float(row[4])
+            data["div_yield"] = to_float(row[1])
+            data["pe"] = to_float(row[3])
+            data["pb"] = to_float(row[4])
 
     except Exception as e:
         print(f"[fetcher] fundamental error for {ticker}: {e}")
@@ -504,10 +452,3 @@ def get_fundamental(ticker: str) -> dict:
 
     _write_cache(cache_key, data)
     return data
-
-
-def _safe_float(val) -> Optional[float]:
-    try:
-        return float(str(val).replace(",", ""))
-    except (ValueError, TypeError):
-        return None

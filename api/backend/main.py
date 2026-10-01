@@ -8,6 +8,7 @@ Run: uvicorn backend.main:app --host 0.0.0.0 --port 8000
 import asyncio
 import logging
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -22,7 +23,16 @@ from backend.control.scheduler import scan_loop
 from backend.api import stocks, chat, backtest, scan, settings, market
 from backend.db import portfolio_db as db
 
-app = FastAPI(title="台股 AI 分析系統", version="1.0.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """建立資料表後，容器啟動時立即執行一次資料更新檢查，之後每小時檢查一次。"""
+    await asyncio.to_thread(db.init_db)
+    scanner_task = asyncio.create_task(scan_loop())
+    yield
+    scanner_task.cancel()
+
+
+app = FastAPI(title="台股 AI 分析系統", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -34,13 +44,6 @@ app.add_middleware(
 static_path = Path(__file__).parent.parent / "static"
 if static_path.exists():
     app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
-
-
-@app.on_event("startup")
-async def _start_background_scanner():
-    """建立資料表後，容器啟動時立即執行一次資料更新檢查，之後每小時檢查一次。"""
-    db.init_db()
-    asyncio.create_task(scan_loop())
 
 
 @app.get("/")

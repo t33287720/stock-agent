@@ -7,6 +7,7 @@ Ollama 為單一 GPU，無法平行處理多個 LLM 請求，因此序列執行�
 已有當日結果的股票會跳過，容器重啟後可從中斷處繼續。
 """
 import logging
+import threading
 
 from backend.control.data.fetcher import get_fundamental
 from backend.control.data.news import get_stock_news
@@ -15,13 +16,27 @@ import backend.db.portfolio_db as db
 
 logger = logging.getLogger(__name__)
 
+# 背景排程與手動「重新分析」共用同一把鎖：同一時間只會有一批在跑，
+# 避免兩批同時把請求丟給單一 GPU 的 Ollama、互相拖慢甚至重複分析同一支股票。
+_batch_lock = threading.Lock()
+
+
+def is_batch_running() -> bool:
+    return _batch_lock.locked()
+
 
 def run_batch_ai_analysis(all_candidates: list[dict], scan_date: str) -> dict:
     """對 all_candidates 逐一執行完整 ReAct AI 分析，存入 stock_ai_results。
 
     已有當日成功結果者跳過 → 容器重啟後可從中斷處繼續；
     先前因本機 LLM 無回應等錯誤而失敗的項目會重新分析。
+    若已有另一批正在執行，會等它跑完再開始（屆時已完成的會直接跳過）。
     """
+    with _batch_lock:
+        return _run_batch(all_candidates, scan_date)
+
+
+def _run_batch(all_candidates: list[dict], scan_date: str) -> dict:
     done = db.get_stock_ai_results_for_date(scan_date)
     skipped = sum(1 for r in done.values() if not r.get("error"))
     analyzed = failed = 0

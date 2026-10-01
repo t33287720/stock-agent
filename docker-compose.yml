@@ -66,7 +66,7 @@ services:
     container_name: stock-adminer
     image: adminer:latest
     ports:
-      - "8083:8080"
+      - "127.0.0.1:8083:8080"   # 只開放本機連線，管理介面不對外
     depends_on:
       - db
     restart: unless-stopped
