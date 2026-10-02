@@ -1,0 +1,59 @@
+# 每次 push / PR 自動跑測試：API（含 Postgres）、選股 pipeline、前端 JS 與 PHP 語法
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: stock_test
+          POSTGRES_USER: stockuser
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U stockuser"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            api/requirements.txt
+            pipeline/requirements.txt
+
+      - name: 安裝套件
+        run: pip install -r api/requirements.txt -r pipeline/requirements.txt pytest
+
+      - name: API 測試
+        working-directory: api
+        env:
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_NAME: stock_test
+          DB_USER: stockuser
+          DB_PASSWORD: test
+        run: python -m pytest -q tests
+
+      - name: pipeline 測試
+        working-directory: pipeline
+        run: python -m pytest -q test_pipeline.py
+
+      - name: 前端 JS 語法檢查
+        run: for f in web/static/js/*.js web/static/js/pages/*.js app/*.js; do node --check "$f"; done
+
+      - name: PHP 語法檢查
+        run: php -l web/index.php
