@@ -87,7 +87,6 @@ const PRESETS = [
 
 // ── 狀態 ──────────────────────────────────────────────────────────────────────
 let stocks = [];          // [{code, name, market, close, ...}]
-let meta = {};            // {date, generated_at, has_valuation}
 let rules = loadRules();
 
 function loadRules() {
@@ -138,7 +137,7 @@ function stockRow(s, highlightField) {
   const extra = highlightField && !['change_pct', 'close'].includes(highlightField)
     ? `<span class="highlight">${esc(FIELDS[highlightField].label)} ${fmt(highlightField, s[highlightField])}</span>` : '';
   return `
-    <li class="stock" data-code="${esc(s.code)}">
+    <li class="stock" data-code="${esc(s.code)}" tabindex="0" aria-expanded="false">
       <div class="stock-main">
         <div><b>${esc(s.name)}</b> <span class="muted">${esc(s.code)} · ${esc(s.market)}</span></div>
         <div class="price">
@@ -158,13 +157,27 @@ function stockDetail(s) {
 }
 
 // 點股票展開 / 收合詳細數字
-document.addEventListener('click', e => {
-  const li = e.target.closest('li.stock');
-  if (!li || e.target.closest('a')) return;
+function toggleDetail(li) {
   const open = li.querySelector('.detail');
-  if (open) return open.remove();
+  if (open) {
+    open.remove();
+    li.setAttribute('aria-expanded', 'false');
+    return;
+  }
   const s = stocks.find(x => x.code === li.dataset.code);
   li.insertAdjacentHTML('beforeend', stockDetail(s));
+  li.setAttribute('aria-expanded', 'true');
+}
+document.addEventListener('click', e => {
+  const li = e.target.closest('li.stock');
+  if (li && !e.target.closest('a')) toggleDetail(li);
+});
+// 鍵盤操作：焦點在股票列上時，Enter / 空白鍵可展開、收合
+document.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('li.stock')) {
+    e.preventDefault();
+    toggleDetail(e.target);
+  }
 });
 
 function ruleCard(rule, { actions = '' } = {}) {
@@ -322,7 +335,7 @@ function openEditor(index) {
 function renderAll() {
   const el = document.getElementById('tab-all');
   el.innerHTML = `
-    <input id="search" type="search" placeholder="輸入代號或名稱，例如 2330 或 台積電">
+    <input id="search" type="search" aria-label="搜尋股票代號或名稱" placeholder="輸入代號或名稱，例如 2330 或 台積電">
     <ol id="search-results" class="list"></ol>`;
   const input = el.querySelector('#search');
   const show = () => {
@@ -353,7 +366,6 @@ async function init() {
     const resp = await fetch('stocks-latest.json', { cache: 'no-cache' });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
-    meta = data;
     stocks = data.rows.map(r => Object.fromEntries(data.columns.map((c, i) => [c, r[i]])));
     document.getElementById('data-date').textContent =
       `${data.date} 收盤資料 · ${stocks.length} 支${data.has_valuation ? '' : ' · 本益比等估值尚未公布'}`;
