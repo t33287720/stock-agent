@@ -8,6 +8,7 @@ prompt 與參數）、證交所／櫃買中心資料解析、全市場篩選。�
     UPDATE_SNAPSHOTS=1 python -m pytest tests/test_snapshots.py
 """
 import json
+import math
 import os
 from pathlib import Path
 
@@ -150,12 +151,50 @@ def collect(monkeypatch) -> dict:
     return jsonable(out)
 
 
+def first_difference(actual, expected, path=""):
+    """回傳第一個不同的位置與內容；完全相同回傳 None。
+
+    浮點數允許極小誤差：不同 CPU（GitHub Actions 每次分到的機器不一定一樣）的浮點運算
+    最後幾位可能不同，剛好落在四捨五入邊界時會差 0.01，這不算邏輯改變。文字、整數、
+    結構（欄位、筆數）都要完全相同。
+    """
+    if isinstance(expected, float) or isinstance(actual, float):
+        if isinstance(actual, (int, float)) and isinstance(expected, (int, float)) \
+                and math.isclose(actual, expected, rel_tol=1e-9, abs_tol=0.011):
+            return None
+        return f"{path}：{actual!r} ≠ {expected!r}"
+    if isinstance(expected, dict) and isinstance(actual, dict):
+        if sorted(actual) != sorted(expected):
+            return f"{path} 的欄位不同：{sorted(set(actual) ^ set(expected))}"
+        for k in expected:
+            diff = first_difference(actual[k], expected[k], f"{path}.{k}")
+            if diff:
+                return diff
+        return None
+    if isinstance(expected, list) and isinstance(actual, list):
+        if len(actual) != len(expected):
+            return f"{path} 的筆數不同：{len(actual)} ≠ {len(expected)}"
+        for i, (a, e) in enumerate(zip(actual, expected)):
+            diff = first_difference(a, e, f"{path}[{i}]")
+            if diff:
+                return diff
+        return None
+    return None if actual == expected else f"{path}：{actual!r} ≠ {expected!r}"
+
+
 def test_outputs_match_snapshot(monkeypatch):
     actual = collect(monkeypatch)
     if os.environ.get("UPDATE_SNAPSHOTS"):
         SNAPSHOT.parent.mkdir(exist_ok=True)
         SNAPSHOT.write_text(json.dumps(actual, ensure_ascii=False, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     expected = json.loads(SNAPSHOT.read_text(encoding="utf-8"))
-    assert sorted(actual) == sorted(expected)
-    for key in expected:
-        assert actual[key] == expected[key], f"「{key}」的輸出跟快照不同"
+    diff = first_difference(actual, expected)
+    assert diff is None, f"輸出跟快照不同：{diff}"
+
+
+def test_snapshot_comparison_rules():
+    assert first_difference({"a": [1.005, "x"]}, {"a": [1.01, "x"]}) is None      # 四捨五入邊界
+    assert first_difference({"a": 1.05}, {"a": 1.0}) == ".a：1.05 ≠ 1.0"           # 真的改變
+    assert first_difference({"a": "x"}, {"a": "y"}) is not None
+    assert first_difference({"n": 14}, {"n": 15}) is not None
+    assert first_difference([1, 2], [1]) == " 的筆數不同：2 ≠ 1"
