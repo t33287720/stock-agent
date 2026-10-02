@@ -22,6 +22,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:?請在 .env 設定 DB_PASSWORD}
       SEARXNG_URL: http://searxng:8080
       OLLAMA_URL: http://host.docker.internal:11434
+      DISABLE_BACKGROUND_JOBS: ${DISABLE_BACKGROUND_JOBS:-}   # 只有 CI 測試會設定
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -61,6 +62,25 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  # ── 每日資料庫備份（./backups，保留 7 天；股價等資料可以重抓，所以不用留太久）──
+  backup:
+    container_name: stock-backup
+    image: postgres:15-alpine
+    environment:
+      PGHOST: db
+      PGUSER: ${DB_USER:-stockuser}
+      PGPASSWORD: ${DB_PASSWORD:?請在 .env 設定 DB_PASSWORD}
+      PGDATABASE: ${DB_NAME:-stockdb}
+      KEEP_DAYS: "7"
+    volumes:
+      - ./db/backup.sh:/backup.sh:ro
+      - ./backups:/backups
+    entrypoint: ["sh", "/backup.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
   # ── DB 管理介面（Adminer 管理 Postgres）───────────────────────────────────────

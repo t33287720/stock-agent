@@ -57,3 +57,38 @@ jobs:
 
       - name: PHP 語法檢查
         run: php -l web/index.php
+
+  # 用專案自己的 docker compose 建出整套服務（API、網頁、SearXNG、資料庫、備份）並確認能互相連通
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 建立 .env
+        run: |
+          echo "DB_PASSWORD=ci-test" >> .env
+          echo "SEARXNG_SECRET=$(openssl rand -hex 32)" >> .env
+          echo "DISABLE_BACKGROUND_JOBS=1" >> .env
+
+      - name: 啟動
+        run: ./deploy.sh
+
+      - name: 確認服務正常
+        run: |
+          for i in $(seq 60); do curl -fs http://localhost:8080/api/config > /dev/null && break; sleep 3; done
+          curl -fs http://localhost:8080/api/config | grep -q '"strategy"'                  # 網頁 → API 代理
+          curl -fs http://localhost:8080/index.php | grep -q 'static/js/pages/scan.js?v='   # 靜態檔帶版本號
+          curl -fs -H 'Accept-Encoding: gzip' -o /dev/null -w '%header{content-encoding}' http://localhost:8080/api/scan/calendar | grep -q gzip
+          curl -fs -o /dev/null http://localhost:8081/                                     # SearXNG 用 .env 的密鑰啟動
+          docker compose exec -T api python -c "import urllib.request; print(urllib.request.urlopen('http://searxng:8080/').status)"
+          ls backups/*-daily-*.dump
+
+      - name: 再部署一次會先備份
+        run: |
+          ./deploy.sh
+          ls backups/*-predeploy-*.dump
+
+      - name: 失敗時印出容器紀錄
+        if: failure()
+        run: docker compose logs --tail 200

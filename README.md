@@ -197,7 +197,10 @@ flowchart LR
    DB_NAME=stockdb
    DB_USER=stockuser
    DB_PASSWORD=<your-password>
+   SEARXNG_SECRET=<openssl rand -hex 32 產生的隨機字串>
    ```
+
+   `SEARXNG_SECRET` 是新聞搜尋服務 SearXNG 的密鑰：這個 repo 是公開的，所以不寫在 `searxng/settings.yml`。
 
    `.env` 已加入 `.gitignore`，不會被提交到版控。
 
@@ -209,13 +212,21 @@ flowchart LR
    ./deploy.sh
    ```
 
-   或不使用腳本：
-
-   ```bash
-   docker-compose up -d --build
-   ```
+   `deploy.sh` 會先檢查 `.env`、在資料庫已經運作時先備份一份（`backups/*-predeploy-*.dump`），再重建並啟動所有容器。第一次啟動時，背景會花約 20～25 分鐘回補全市場股價。
 
 4. 開啟瀏覽器前往 `http://localhost:8080/`。
+
+### 資料庫備份
+
+`backup` 容器啟動時先備份一次，之後每 24 小時一次，存到 `backups/`，保留最近 7 天（股價可以重抓，AI 分析每天重跑，所以不用留太久）。還原（會覆蓋目前的資料）：
+
+```bash
+docker compose exec -T db pg_restore -U stockuser -d stockdb --clean --if-exists < backups/<檔名>.dump
+```
+
+### 測試
+
+`cd api && python -m pytest`（設定 `DB_HOST` 等環境變數時會連資料庫測試）。每次 push 由 GitHub Actions 自動執行，並用 docker compose 建出整套服務確認能互相連通。
 
 ## 設定
 

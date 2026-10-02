@@ -7,6 +7,7 @@ Run: uvicorn backend.main:app --host 0.0.0.0 --port 8000
 """
 import asyncio
 import logging
+import os
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -27,7 +28,12 @@ from backend.db import portfolio_db as db
 async def lifespan(_app: FastAPI):
     """建立資料表後，容器啟動時立即執行一次資料更新檢查，之後每小時檢查一次。"""
     await asyncio.to_thread(db.init_db)
-    tasks = [asyncio.create_task(scan_loop()), asyncio.create_task(price_sync_loop())]
+    # CI 測試時關掉背景排程，避免每次 push 都去抓證交所資料
+    if os.environ.get("DISABLE_BACKGROUND_JOBS"):
+        logging.getLogger(__name__).info("DISABLE_BACKGROUND_JOBS 已設定，不啟動背景排程")
+        tasks = []
+    else:
+        tasks = [asyncio.create_task(scan_loop()), asyncio.create_task(price_sync_loop())]
     yield
     for task in tasks:
         task.cancel()
