@@ -338,7 +338,11 @@ function renderAll() {
 // ── 分頁切換 ──────────────────────────────────────────────────────────────────
 function switchTab(tab) {
   document.querySelectorAll('main > section').forEach(s => s.hidden = s.id !== `tab-${tab}`);
-  document.querySelectorAll('.tabbar button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.tabbar button').forEach(b => {
+    const on = b.dataset.tab === tab;
+    b.classList.toggle('active', on);
+    if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  });
   window.scrollTo(0, 0);
 }
 document.querySelectorAll('.tabbar button').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
@@ -347,6 +351,7 @@ document.querySelectorAll('.tabbar button').forEach(b => b.addEventListener('cli
 async function init() {
   try {
     const resp = await fetch('stocks-latest.json', { cache: 'no-cache' });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
     meta = data;
     stocks = data.rows.map(r => Object.fromEntries(data.columns.map((c, i) => [c, r[i]])));
@@ -354,6 +359,8 @@ async function init() {
       `${data.date} 收盤資料 · ${stocks.length} 支${data.has_valuation ? '' : ' · 本益比等估值尚未公布'}`;
   } catch {
     document.getElementById('data-date').textContent = '資料載入失敗，請稍後再試';
+    document.getElementById('tab-picks').innerHTML =
+      '<p class="muted empty">資料載入失敗，請檢查網路後<button class="ghost" onclick="location.reload()">重新載入</button></p>';
     return;
   }
   renderPicks();
