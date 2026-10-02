@@ -34,12 +34,14 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  # ── SearXNG（個股新聞搜尋，免 API key，主要供 api 內部呼叫；對外開放方便手動驗證搜尋結果）──
+  # ── SearXNG（個股新聞搜尋，免 API key，供 api 內部呼叫；本機可開 http://localhost:8081 手動驗證搜尋結果）──
   searxng:
     container_name: stock-searxng
     image: searxng/searxng:latest
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?請在 .env 設定 SEARXNG_SECRET（產生方式：openssl rand -hex 32）}
     ports:
-      - "8081:8080"
+      - "127.0.0.1:8081:8080"   # 只開放本機：關閉了流量限制，對外開放會變成別人的免費搜尋代理
     volumes:
       - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
     restart: unless-stopped
