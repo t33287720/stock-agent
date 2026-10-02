@@ -87,7 +87,6 @@ const PRESETS = [
 
 // ── 狀態 ──────────────────────────────────────────────────────────────────────
 let stocks = [];          // [{code, name, market, close, ...}]
-let meta = {};            // {date, generated_at, has_valuation}
 let rules = loadRules();
 
 function loadRules() {
@@ -138,7 +137,7 @@ function stockRow(s, highlightField) {
   const extra = highlightField && !['change_pct', 'close'].includes(highlightField)
     ? `<span class="highlight">${esc(FIELDS[highlightField].label)} ${fmt(highlightField, s[highlightField])}</span>` : '';
   return `
-    <li class="stock" data-code="${esc(s.code)}">
+    <li class="stock" data-code="${esc(s.code)}" tabindex="0" aria-expanded="false">
       <div class="stock-main">
         <div><b>${esc(s.name)}</b> <span class="muted">${esc(s.code)} · ${esc(s.market)}</span></div>
         <div class="price">
@@ -158,13 +157,27 @@ function stockDetail(s) {
 }
 
 // 點股票展開 / 收合詳細數字
-document.addEventListener('click', e => {
-  const li = e.target.closest('li.stock');
-  if (!li || e.target.closest('a')) return;
+function toggleDetail(li) {
   const open = li.querySelector('.detail');
-  if (open) return open.remove();
+  if (open) {
+    open.remove();
+    li.setAttribute('aria-expanded', 'false');
+    return;
+  }
   const s = stocks.find(x => x.code === li.dataset.code);
   li.insertAdjacentHTML('beforeend', stockDetail(s));
+  li.setAttribute('aria-expanded', 'true');
+}
+document.addEventListener('click', e => {
+  const li = e.target.closest('li.stock');
+  if (li && !e.target.closest('a')) toggleDetail(li);
+});
+// 鍵盤操作：焦點在股票列上時，Enter / 空白鍵可展開、收合
+document.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('li.stock')) {
+    e.preventDefault();
+    toggleDetail(e.target);
+  }
 });
 
 function ruleCard(rule, { actions = '' } = {}) {
@@ -253,12 +266,12 @@ function conditionRow(c = { field: 'yield', op: '>=', value: 5 }) {
   const isBool = FIELDS[c.field].bool;
   return `
     <div class="cond">
-      <select class="c-field">${fieldOptions(c.field)}</select>
+      <select class="c-field" aria-label="條件欄位">${fieldOptions(c.field)}</select>
       ${isBool
-        ? `<select class="c-bool"><option value="true" ${c.value ? 'selected' : ''}>是</option><option value="false" ${!c.value ? 'selected' : ''}>否</option></select>`
-        : `<select class="c-op"><option value=">=" ${c.op === '>=' ? 'selected' : ''}>≥</option><option value="<=" ${c.op === '<=' ? 'selected' : ''}>≤</option></select>
-           <input class="c-value" type="number" step="any" inputmode="decimal" value="${c.value}">`}
-      <button type="button" class="ghost danger" onclick="this.parentElement.remove()">✕</button>
+        ? `<select class="c-bool" aria-label="是否符合"><option value="true" ${c.value ? 'selected' : ''}>是</option><option value="false" ${!c.value ? 'selected' : ''}>否</option></select>`
+        : `<select class="c-op" aria-label="比較方式"><option value=">=" ${c.op === '>=' ? 'selected' : ''}>≥</option><option value="<=" ${c.op === '<=' ? 'selected' : ''}>≤</option></select>
+           <input class="c-value" aria-label="條件數值" type="number" step="any" inputmode="decimal" value="${c.value}">`}
+      <button type="button" class="ghost danger" aria-label="刪除此條件" title="刪除此條件" onclick="this.parentElement.remove()">✕</button>
     </div>`;
 }
 
@@ -322,7 +335,7 @@ function openEditor(index) {
 function renderAll() {
   const el = document.getElementById('tab-all');
   el.innerHTML = `
-    <input id="search" type="search" placeholder="輸入代號或名稱，例如 2330 或 台積電">
+    <input id="search" type="search" aria-label="搜尋股票代號或名稱" placeholder="輸入代號或名稱，例如 2330 或 台積電">
     <ol id="search-results" class="list"></ol>`;
   const input = el.querySelector('#search');
   const show = () => {
@@ -338,7 +351,11 @@ function renderAll() {
 // ── 分頁切換 ──────────────────────────────────────────────────────────────────
 function switchTab(tab) {
   document.querySelectorAll('main > section').forEach(s => s.hidden = s.id !== `tab-${tab}`);
-  document.querySelectorAll('.tabbar button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.tabbar button').forEach(b => {
+    const on = b.dataset.tab === tab;
+    b.classList.toggle('active', on);
+    if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  });
   window.scrollTo(0, 0);
 }
 document.querySelectorAll('.tabbar button').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
@@ -347,13 +364,15 @@ document.querySelectorAll('.tabbar button').forEach(b => b.addEventListener('cli
 async function init() {
   try {
     const resp = await fetch('stocks-latest.json', { cache: 'no-cache' });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
-    meta = data;
     stocks = data.rows.map(r => Object.fromEntries(data.columns.map((c, i) => [c, r[i]])));
     document.getElementById('data-date').textContent =
       `${data.date} 收盤資料 · ${stocks.length} 支${data.has_valuation ? '' : ' · 本益比等估值尚未公布'}`;
   } catch {
     document.getElementById('data-date').textContent = '資料載入失敗，請稍後再試';
+    document.getElementById('tab-picks').innerHTML =
+      '<p class="muted empty">資料載入失敗，請檢查網路後<button class="ghost" onclick="location.reload()">重新載入</button></p>';
     return;
   }
   renderPicks();
