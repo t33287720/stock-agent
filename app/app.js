@@ -266,12 +266,12 @@ function conditionRow(c = { field: 'yield', op: '>=', value: 5 }) {
   const isBool = FIELDS[c.field].bool;
   return `
     <div class="cond">
-      <select class="c-field">${fieldOptions(c.field)}</select>
+      <select class="c-field" aria-label="條件欄位">${fieldOptions(c.field)}</select>
       ${isBool
-        ? `<select class="c-bool"><option value="true" ${c.value ? 'selected' : ''}>是</option><option value="false" ${!c.value ? 'selected' : ''}>否</option></select>`
-        : `<select class="c-op"><option value=">=" ${c.op === '>=' ? 'selected' : ''}>≥</option><option value="<=" ${c.op === '<=' ? 'selected' : ''}>≤</option></select>
-           <input class="c-value" type="number" step="any" inputmode="decimal" value="${c.value}">`}
-      <button type="button" class="ghost danger" onclick="this.parentElement.remove()">✕</button>
+        ? `<select class="c-bool" aria-label="是否符合"><option value="true" ${c.value ? 'selected' : ''}>是</option><option value="false" ${!c.value ? 'selected' : ''}>否</option></select>`
+        : `<select class="c-op" aria-label="比較方式"><option value=">=" ${c.op === '>=' ? 'selected' : ''}>≥</option><option value="<=" ${c.op === '<=' ? 'selected' : ''}>≤</option></select>
+           <input class="c-value" aria-label="條件數值" type="number" step="any" inputmode="decimal" value="${c.value}">`}
+      <button type="button" class="ghost danger" aria-label="刪除此條件" title="刪除此條件" onclick="this.parentElement.remove()">✕</button>
     </div>`;
 }
 
