@@ -14,6 +14,15 @@ from backend.control.strategy.signals import generate_signals, should_buy, shoul
 from backend.utils import TAIPEI, to_float
 
 
+def ai_targets(result: dict) -> list[dict]:
+    """要做批次 AI 分析的股票：只有買入／賣出候選（今日訊號掃描頁只顯示這些股票的 AI 結果）。
+
+    回傳 all_candidates 裡對應的項目（含 AI 分析需要的技術指標摘要），順序照原本的成交量排名。
+    """
+    wanted = {c["ticker"] for c in result.get("buy_candidates", []) + result.get("sell_candidates", [])}
+    return [c for c in result.get("all_candidates", []) if c["ticker"] in wanted]
+
+
 def scan_today(max_candidates: int = 80) -> dict:
     """
     掃描前 N 支股票，回傳今日買入/賣出候選清單。

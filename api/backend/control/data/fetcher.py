@@ -1,7 +1,8 @@
 """
 Taiwan stock data fetcher.
 Sources:
-  - twstock        → historical OHLCV (primary, direct TWSE/TPEX API)
+  - price_store    → historical OHLCV from the daily all-market table in Postgres (primary)
+  - twstock        → historical OHLCV per stock (when the table doesn't cover the period yet)
   - yfinance       → historical OHLCV fallback + fundamental info (EPS, ROE, sector)
   - TWSE Open API  → stock list, P/E, P/B, dividend yield
   - Cache          → JSON files under /cache/ (TTL = cache_hours)
@@ -17,6 +18,7 @@ import twstock
 
 from backend import cache
 from backend.config import load_config
+from backend.control.data import price_store
 from backend.utils import TAIPEI, is_trading_day, to_float
 
 TWSE_BASE = "https://openapi.twse.com.tw/v1"
@@ -278,7 +280,7 @@ def _fallback_stock_list() -> list[dict]:
         ("2303", "聯電"), ("3711", "日月光投控"), ("2891", "中信金"),
         ("2892", "第一金"), ("2884", "玉山金"), ("2880", "華南金"),
         ("5871", "中租-KY"), ("2885", "元大金"), ("2883", "開發金"),
-        ("2887", "台新金"), ("2888", "新光金"), ("1326", "台化"),
+        ("2887", "台新金"), ("1326", "台化"),
         ("2379", "瑞昱"), ("3008", "大立光"), ("2395", "研華"),
         ("2382", "廣達"), ("2357", "華碩"), ("2376", "技嘉"),
         ("2327", "國巨"), ("4904", "遠傳"), ("4938", "和碩"),
@@ -296,7 +298,18 @@ def _fallback_stock_list() -> list[dict]:
 # ── historical price ───────────────────────────────────────────────────────────
 
 def get_stock_history(ticker: str, days: int = 365) -> pd.DataFrame:
-    """Fetch OHLCV history. Primary: twstock (direct TWSE/TPEX). Fallback: yfinance."""
+    """Fetch OHLCV history.
+
+    Primary: 資料庫裡的全市場每日行情（price_store，不需要打任何外部 API）。
+    資料庫還沒涵蓋時才逐支抓：twstock（直接打 TWSE/TPEX）→ yfinance。
+    """
+    try:
+        df = price_store.history(ticker, days)
+        if df is not None:
+            return df
+    except Exception as e:
+        print(f"[fetcher] price_store error for {ticker}: {e}")
+
     # Cache key includes trading day so it auto-invalidates each new trading day.
     cache_key = f"hist_{ticker}_{days}_{last_trading_day_str()}"
     cached = _read_cache(cache_key)

@@ -65,19 +65,22 @@ api/backend/
   control/                               ── 控制區 ──
     scheduler.py      背景排程：每小時檢查新交易日，自動觸發下面幾個模組
     data/fetcher.py   股價、基本面抓取與快取（含全市場批次報價/估值）
+    data/price_store.py  全市場每日行情：每個交易日抓兩次存進 DB，個股歷史從 DB 讀
     data/news.py      個股相關新聞搜尋（SearXNG）
     analysis/technical.py  技術指標計算
     llm/ollama_client.py   Ollama 傳輸層
     llm/analysis.py        AI 個股分析：prompt、正規化、快取、二次驗證
     llm/chat.py             問股票聊天邏輯
+    llm/react.py            AI 分析與聊天共用的流程積木（LLM 步驟、延伸搜尋迴圈）
     strategy/signals.py     買賣訊號、單股回測
     strategy/scanner.py     今日訊號掃描
-    strategy/ai_batch.py       批次 AI 分析
+    strategy/ai_batch.py       批次 AI 分析（只分析買進/賣出候選）
     strategy/market_screener.py  全市場篩選頁：對篩選後子集現算技術指標（KD等）與基本面（毛利率/EPS/ROE）
   db/                                     ── 資料層（共用，不屬於任何一區）──
     portfolio_db.py   PostgreSQL 存取層
     schema.sql
   config.py            settings.json 讀寫（API 區與控制區共用的系統設定）
+  cache.py             本機 JSON 檔案快取（股價、新聞、AI 分析共用）
   utils.py             交易日曆／時區（共用小工具）
 ```
 

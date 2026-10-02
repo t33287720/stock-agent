@@ -42,7 +42,7 @@ cp app/* pipeline/data/ && python -m http.server -d pipeline/data 8000   # 打�
 
 - **個股分析**：技術指標（RSI、MACD、KD、布林通道、SMA 等共 15 種）+ 基本面（P/E、P/B、ROE、毛利率、殖利率）+ 相關新聞搜尋
 - **個股 AI 分析**：技術指標 + 基本面 + 相關新聞交給本機 Ollama LLM，產生偏多/中性/偏空判斷、信心度、理由與風險，並經第二次驗證降低幻覺
-- **今日訊號掃描**：掃描追蹤股票池，找出今天觸發買進/賣出訊號的股票，可選擇加入 AI 信心評分（含當日新聞佐證）
+- **今日訊號掃描**：掃描追蹤股票池，找出今天觸發買進/賣出訊號的股票，可選擇加入 AI 信心評分（含當日新聞佐證；只對買進/賣出候選做 AI 分析）
 - **全市場篩選**：TWSE 上市 + TPEX 上櫃全市場（約 1900 支）依價格/成交量/PE/PB/殖利率即時篩選；篩選後子集（上限 150 支）可即時計算 RSI/KD 等技術指標並套用 KD 低檔門檻，也可抓毛利率/EPS/ROE 並套用毛利率門檻（依序篩選對應早期 stock_choose_for_personal 專案的 KD → PER → 毛利率流程，但改用 TWSE/TPEX 官方 OpenAPI + yfinance，不再爬 goodinfo.tw）
 - **單股回測**：用歷史資料模擬單一股票的買賣訊號表現
 
@@ -57,7 +57,7 @@ cp app/* pipeline/data/ && python -m http.server -d pipeline/data 8000   # 打�
 | --- | --- | --- |
 | `web` | PHP 8.3 + Nginx，提供前端頁面並把 `/api/` 反向代理到 `api` | 8080 |
 | `api` | Python FastAPI 後端，負責抓資料、計算指標、產生訊號、回測 | （僅內部，由 `web` 代理） |
-| `db` | PostgreSQL 15，儲存每日訊號掃描結果、批次 AI 分析結果、排程執行狀況 | （僅內部） |
+| `db` | PostgreSQL 15，儲存全市場每日行情、每日訊號掃描結果、批次 AI 分析結果、排程執行狀況 | （僅內部） |
 | `searxng` | 自架 SearXNG，供 `api` 搜尋個股相關新聞，免 API key | （僅內部） |
 | `adminer` | PostgreSQL 管理介面 | 8082 |
 
@@ -67,7 +67,11 @@ cp app/* pipeline/data/ && python -m http.server -d pipeline/data 8000   # 打�
 
 - **前端**：PHP（單頁 `index.php`）+ 原生 JavaScript（`web/static/js/app.js`）+ Chart.js
 - **後端**：Python 3.11 / FastAPI / pandas / `ta`（KD 另自行實作台股慣用的 9 日 RSV + 2/3-1/3 平滑公式，非 `ta` 內建的通用版隨機指標）
-- **資料來源**：`twstock`（主）、`yfinance`（備援、基本面含毛利率/EPS/ROE）、TWSE/TPEX OpenAPI（股票清單、P/E、P/B、殖利率）、SearXNG（個股相關新聞）
+- **資料來源**：
+  - 歷史股價：每個交易日抓一次 TWSE/TPEX「全市場收盤行情」存進 PostgreSQL（`daily_prices`），個股歷史直接從資料庫讀，不逐支打證交所。第一次啟動會在背景回補約一年多的資料（約 20～25 分鐘），回補完成前自動退回 `twstock`／`yfinance` 逐支抓取
+  - `yfinance`：基本面（毛利率/EPS/ROE）
+  - TWSE/TPEX OpenAPI：股票清單、P/E、P/B、殖利率、休市日
+  - SearXNG：個股相關新聞
 - **AI 分析**：本機 Ollama（預設 `qwen2.5:7b`），JSON mode + 兩階段（生成 → 二次驗證）降低幻覺
 - **資料庫**：PostgreSQL（`psycopg2`）
 
@@ -86,6 +90,7 @@ api/
   backend/
     main.py                      # API 區組裝點：建立 app、掛載路由、啟動背景排程（不含路由邏輯）
     config.py                    # 讀寫 settings.json（策略參數、快取設定）
+    cache.py                     # 本機 JSON 檔案快取（股價、新聞、AI 分析共用）
     utils.py                     # 台股交易日曆 / 時區
     api/                         # ── API 區：純路由，只做 request → 呼叫控制區/DB → response ──
       stocks.py                  # 股票列表 / 個股技術+基本面 / 新聞 / AI 分析
@@ -95,12 +100,14 @@ api/
       market.py                  # 全市場篩選
       settings.py                # 策略/系統設定
     control/                     # ── 控制區：外部資料撈取 + 商業邏輯 + 寫 DB ──
-      scheduler.py               # 背景排程：容器啟動 + 每小時自動掃描 / 批次 AI 分析
+      scheduler.py               # 背景排程：容器啟動 + 每小時自動掃描 / 批次 AI 分析 / 全市場行情同步
       data/fetcher.py            # 股價、基本面抓取與快取（含全市場批次報價/估值）
+      data/price_store.py        # 全市場每日行情：同步到 DB、個股歷史從 DB 讀
       data/news.py               # 個股相關新聞搜尋（透過 SearXNG，免 API key）
       llm/ollama_client.py       # Ollama 傳輸層（JSON mode、容錯解析）
       llm/analysis.py            # AI 分析：prompt、正規化、快取、二次驗證
       llm/chat.py                # 問股票聊天邏輯
+      llm/react.py               # AI 分析與聊天共用的流程積木（LLM 步驟、延伸搜尋迴圈）
       analysis/technical.py      # 技術指標計算
       strategy/signals.py        # 買賣訊號、單股回測、手續費常數
       strategy/scanner.py        # 今日訊號掃描

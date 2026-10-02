@@ -19,7 +19,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from backend.control.scheduler import scan_loop
+from backend.control.scheduler import price_sync_loop, scan_loop
 from backend.api import stocks, chat, backtest, scan, settings, market
 from backend.db import portfolio_db as db
 
@@ -27,9 +27,10 @@ from backend.db import portfolio_db as db
 async def lifespan(_app: FastAPI):
     """建立資料表後，容器啟動時立即執行一次資料更新檢查，之後每小時檢查一次。"""
     await asyncio.to_thread(db.init_db)
-    scanner_task = asyncio.create_task(scan_loop())
+    tasks = [asyncio.create_task(scan_loop()), asyncio.create_task(price_sync_loop())]
     yield
-    scanner_task.cancel()
+    for task in tasks:
+        task.cancel()
 
 
 app = FastAPI(title="台股 AI 分析系統", version="1.0.0", lifespan=lifespan)

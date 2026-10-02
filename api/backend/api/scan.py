@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException
 
 from backend.db import portfolio_db as db
 from backend.control.strategy.ai_batch import is_batch_running, run_batch_ai_analysis
+from backend.control.strategy.scanner import ai_targets
 from backend.utils import TAIPEI, is_trading_day
 
 router = APIRouter()
@@ -86,7 +87,7 @@ async def get_scan_ai_progress():
 
 @router.post("/api/scan/ai-retry")
 async def retry_scan_ai_analysis():
-    """手動重新執行今日掃描候選股的 AI 分析（跳過已成功項目，重試先前因 LLM 無回應等失敗的項目）。"""
+    """手動重新執行今日買入／賣出候選的 AI 分析（跳過已成功項目，重試先前因 LLM 無回應等失敗的項目）。"""
     if is_batch_running():
         return {"status": "running"}
 
@@ -95,13 +96,13 @@ async def retry_scan_ai_analysis():
         raise HTTPException(400, "尚無掃描結果")
 
     scan_date = result.get("scan_date")
-    all_candidates = result.get("all_candidates", [])
+    targets = ai_targets(result)
 
     async def _run():
         try:
-            await asyncio.to_thread(run_batch_ai_analysis, all_candidates, scan_date)
+            await asyncio.to_thread(run_batch_ai_analysis, targets, scan_date)
         except Exception:
             logging.getLogger(__name__).exception("[ai-retry] 重新分析失敗")
 
     asyncio.create_task(_run())
-    return {"status": "started", "total": len(all_candidates)}
+    return {"status": "started", "total": len(targets)}

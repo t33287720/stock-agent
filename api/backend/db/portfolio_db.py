@@ -330,13 +330,17 @@ def count_stock_ai_done(scan_date: str, tickers: list[str]) -> int:
 
 
 def get_latest_scan_tickers() -> tuple[str, list[str]] | None:
-    """回傳最新一次掃描的 (scan_date, all_candidates 的股票代號清單)，不載入整份 result。"""
+    """回傳最新一次掃描的 (scan_date, 買入＋賣出候選的股票代號清單)，不載入整份 result。
+
+    這些就是批次 AI 分析的對象（見 scanner.ai_targets），AI 進度用它當分母。
+    """
     with _conn() as c:
         with c.cursor() as cur:
             cur.execute("""
                 SELECT scan_date,
                        ARRAY(SELECT x->>'ticker'
-                             FROM jsonb_array_elements(COALESCE(result->'all_candidates', '[]'::jsonb)) x)
+                             FROM jsonb_array_elements(COALESCE(result->'buy_candidates', '[]'::jsonb)
+                                                    || COALESCE(result->'sell_candidates', '[]'::jsonb)) x)
                 FROM   scan_results
                 ORDER  BY scan_date DESC
                 LIMIT  1
@@ -359,3 +363,46 @@ def get_stock_ai_trace(ticker: str, scan_date: str) -> list | None:
             row = cur.fetchone()
             return row[0] if row else None
 
+
+# ── Daily prices (全市場每日行情，見 control/data/price_store.py) ─────────────
+
+def get_synced_price_days() -> set:
+    """已經完整同步過的交易日（date 物件的 set）。"""
+    with _conn() as c:
+        with c.cursor() as cur:
+            cur.execute("SELECT trade_date FROM daily_price_sync")
+            return {row[0] for row in cur.fetchall()}
+
+
+def mark_price_day_synced(trade_date, rows: int) -> None:
+    with _conn() as c:
+        with c.cursor() as cur:
+            cur.execute("""
+                INSERT INTO daily_price_sync (trade_date, rows) VALUES (%s, %s)
+                ON CONFLICT (trade_date) DO UPDATE SET rows = EXCLUDED.rows, synced_at = NOW()
+            """, (trade_date, rows))
+
+
+def save_daily_prices(rows: list[tuple]) -> None:
+    """rows: [(trade_date, ticker, open, high, low, close, volume), ...]"""
+    with _conn() as c:
+        with c.cursor() as cur:
+            psycopg2.extras.execute_values(cur, """
+                INSERT INTO daily_prices (trade_date, ticker, open, high, low, close, volume) VALUES %s
+                ON CONFLICT (ticker, trade_date) DO UPDATE SET
+                    open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low,
+                    close = EXCLUDED.close, volume = EXCLUDED.volume
+            """, rows, page_size=1000)
+
+
+def get_daily_prices(ticker: str, start) -> list[tuple]:
+    """某支股票從 start 起的日 K：[(trade_date, open, high, low, close, volume), ...]，舊到新。"""
+    with _conn() as c:
+        with c.cursor() as cur:
+            cur.execute("""
+                SELECT trade_date, open, high, low, close, volume
+                FROM   daily_prices
+                WHERE  ticker = %s AND trade_date >= %s
+                ORDER  BY trade_date
+            """, (ticker, start))
+            return cur.fetchall()
