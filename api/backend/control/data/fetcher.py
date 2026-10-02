@@ -8,6 +8,8 @@ Sources:
   - Cache          → JSON files under /cache/ (TTL = cache_hours)
 """
 import difflib
+import threading
+import time
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -109,10 +111,10 @@ def get_top100_stocks() -> list[dict]:
         return _fallback_stock_list()
 
 
-def _fetch_all_twse_valuation() -> dict[str, dict]:
-    """回傳 TWSE BWIBBU_d 全部上市股票的 PE/PB/殖利率（不帶 stockNo，一次拿全市場）。"""
-    date_str = _now().strftime("%Y%m%d")
-    raw = _get_json(f"{TWSE_BWIBBU}?response=json&date={date_str}&selectType=ALL")
+def _fetch_all_twse_valuation(day) -> dict[str, dict]:
+    """回傳 TWSE BWIBBU_d 某一天全部上市股票的 PE/PB/殖利率（不帶 stockNo，一次拿全市場）。
+    那天還沒公布或休市時回傳空 dict。"""
+    raw = _get_json(f"{TWSE_BWIBBU}?response=json&date={day:%Y%m%d}&selectType=ALL")
 
     out = {}
     # fields: 證券代號, 證券名稱, 收盤價, 殖利率(%), 股利年度, 本益比, 股價淨值比, 財報年/季
@@ -151,6 +153,48 @@ def _fetch_all_tpex_valuation() -> dict[str, dict]:
     return out
 
 
+_valuation_memo: dict = {}
+_valuation_lock = threading.Lock()
+VALUATION_FALLBACK_TTL = 1800  # 用的是前一個交易日的資料時，30 分鐘後再看今天的公布了沒
+
+
+def get_market_valuation() -> dict[str, dict]:
+    """全市場（上市＋上櫃）最近一次公布的 PE/PB/殖利率，{ticker: {pe, pb, div_yield}}。
+
+    上市的當天資料要到下午才公布，週末、假日也沒有，所以往回找最近一個有資料的交易日
+    （原本固定查「今天」，早上和假日都會拿到空的）。已經是最新交易日的資料就照 cache_hours
+    保留，還在用前一天的資料時 30 分鐘後重查。
+    """
+    with _valuation_lock:
+        memo = _valuation_memo
+        ttl = load_config()["settings"].get("cache_hours", 6) * 3600 if memo.get("is_latest") else VALUATION_FALLBACK_TTL
+        if memo.get("data") and time.time() - memo["fetched_at"] < ttl:
+            return memo["data"]
+
+        latest_trading_day = datetime.strptime(last_trading_day_str(), "%Y-%m-%d").date()
+        twse, found_day, day = {}, None, latest_trading_day
+        for _ in range(10):
+            if is_trading_day(day):
+                try:
+                    twse = _fetch_all_twse_valuation(day)
+                except Exception as e:
+                    print(f"[fetcher] TWSE valuation error ({day}): {e}")
+                if twse:
+                    found_day = day
+                    break
+            day -= timedelta(days=1)
+        try:
+            tpex = _fetch_all_tpex_valuation()
+        except Exception as e:
+            print(f"[fetcher] TPEX valuation error: {e}")
+            tpex = {}
+
+        data = {**twse, **tpex}
+        if data:
+            _valuation_memo.update(data=data, fetched_at=time.time(), is_latest=found_day == latest_trading_day)
+        return data
+
+
 def get_market_screener() -> list[dict]:
     """回傳全市場（TWSE 上市 + TPEX 上櫃）股票清單，含價格/成交量/PE/PB/殖利率，
     供「全市場篩選」頁面使用。
@@ -171,13 +215,9 @@ def get_market_screener() -> list[dict]:
     except Exception as e:
         print(f"[fetcher] market screener TWSE quotes error: {e}")
         twse_quotes = []
-    try:
-        twse_valuation = _fetch_all_twse_valuation()
-    except Exception as e:
-        print(f"[fetcher] market screener TWSE valuation error: {e}")
-        twse_valuation = {}
+    valuation = get_market_valuation()
     for s in twse_quotes:
-        v = twse_valuation.get(s["ticker"], {})
+        v = valuation.get(s["ticker"], {})
         result.append({**s, "market": "TWSE",
                        "pe": v.get("pe"), "pb": v.get("pb"), "div_yield": v.get("div_yield")})
 
@@ -186,13 +226,8 @@ def get_market_screener() -> list[dict]:
     except Exception as e:
         print(f"[fetcher] market screener TPEX quotes error: {e}")
         tpex_quotes = []
-    try:
-        tpex_valuation = _fetch_all_tpex_valuation()
-    except Exception as e:
-        print(f"[fetcher] market screener TPEX valuation error: {e}")
-        tpex_valuation = {}
     for s in tpex_quotes:
-        v = tpex_valuation.get(s["ticker"], {})
+        v = valuation.get(s["ticker"], {})
         result.append({**s, "market": "TPEX",
                        "pe": v.get("pe"), "pb": v.get("pb"), "div_yield": v.get("div_yield")})
 
@@ -405,7 +440,7 @@ def _yf_history(yf_ticker: str, days: int) -> pd.DataFrame:
 # ── fundamental data ───────────────────────────────────────────────────────────
 
 def get_fundamental(ticker: str) -> dict:
-    """Fetch P/E, P/B, dividend yield from TWSE BWIBBU endpoint."""
+    """P/E、P/B、殖利率取自全市場估值（get_market_valuation，上市＋上櫃），EPS/ROE/毛利率等取自 yfinance。"""
     # 以週為 TTL：同一週內不重抓（基本面每週更新一次已足夠）
     week_str  = _now().strftime("%Y-W%W")
     cache_key = f"fund_{ticker}_{week_str}"
@@ -416,20 +451,9 @@ def get_fundamental(ticker: str) -> dict:
     data = {"ticker": ticker, "pe": None, "pb": None, "div_yield": None,
             "eps": None, "roe": None, "gross_margin": None, "name": get_company_name(ticker)}
 
-    try:
-        date_str = _now().strftime("%Y%m%d")
-        url = (f"{TWSE_BWIBBU}?response=json"
-               f"&date={date_str}&stockNo={ticker}&selectType=ALL")
-        rows = _get_json(url).get("data", [])
-        if rows:
-            row = rows[-1]
-            # TWSE columns: 0=date, 1=yield, 2=dividend, 3=PE, 4=PB
-            data["div_yield"] = to_float(row[1])
-            data["pe"] = to_float(row[3])
-            data["pb"] = to_float(row[4])
-
-    except Exception as e:
-        print(f"[fetcher] fundamental error for {ticker}: {e}")
+    valuation = get_market_valuation().get(ticker, {})
+    for key in ("pe", "pb", "div_yield"):
+        data[key] = valuation.get(key)
 
     # Supplement with yfinance info (TWSE 上市用 .TW，抓不到再試 .TWO 上櫃)
     info = {}

@@ -38,9 +38,9 @@ jobs:
       - name: 下載上次的歷史股價（沒有的話 build.py 會自動從頭回補）
         run: |
           mkdir -p site
-          curl -fsSL -o site/history.csv.gz \
-            "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/history.csv.gz" \
-            || rm -f site/history.csv.gz
+          curl -fsSL -o site/history-v2.csv.gz \
+            "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/history-v2.csv.gz" \
+            || rm -f site/history-v2.csv.gz
 
       - name: 補齊股價、計算指標
         run: python pipeline/build.py site

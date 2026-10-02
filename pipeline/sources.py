@@ -37,6 +37,7 @@ def is_stock(code: str) -> bool:
 
 
 def _pick(fields: list[str], row: list, *names: str) -> list:
+    fields = [f.strip() for f in fields]  # 櫃買中心的欄位名稱有時帶前後空白
     return [row[fields.index(n)] for n in names]
 
 
@@ -63,8 +64,12 @@ def twse_prices(day: date) -> list[dict] | None:
 
 
 def tpex_prices(day: date) -> list[dict]:
-    """上櫃股票某一天的開高低收量。沒有資料時回傳空 list。"""
-    data = _get_json("https://www.tpex.org.tw/www/zh-tw/afterTrading/dailyQuotes"
+    """上櫃股票某一天的開高低收量。沒有資料時回傳空 list。
+
+    用「不含定價」版本：成交股數只算一般交易時段，跟上市 MI_INDEX 口徑一致。
+    （dailyQuotes 會把 14:30 盤後定價交易也算進去，鎖漲停的日子成交量可能多好幾倍，量比會失真。）
+    """
+    data = _get_json("https://www.tpex.org.tw/www/zh-tw/afterTrading/otc"
                      f"?date={day:%Y/%m/%d}&type=EW&response=json")
     tables = data.get("tables") or []
     if not tables or not tables[0].get("data"):

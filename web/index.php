@@ -1,10 +1,18 @@
+<?php
+// 靜態檔快取 7 天（見 docker/nginx.conf），網址帶上檔案修改時間當版本號：
+// 檔案一改網址就變，瀏覽器會抓新版，不會出現新舊 JS 混用。
+function asset(string $path): string {
+    $file = __DIR__ . '/static/' . $path;
+    return '/stock/static/' . $path . '?v=' . (is_file($file) ? filemtime($file) : '0');
+}
+?>
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>台股 AI 分析系統</title>
-  <link rel="stylesheet" href="/stock/static/css/style.css">
+  <link rel="stylesheet" href="<?= asset('css/style.css') ?>">
 </head>
 <body>
 <div class="layout">
@@ -244,14 +252,14 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
 <!-- core.js 最先載入（全域狀態、showPage/switchTab、共用小工具）；
      ai-analysis.js 排在 chat.js / scan.js 之前，因為它們重用 renderStepBody -->
-<script src="/stock/static/js/core.js"></script>
-<script src="/stock/static/js/pages/home.js"></script>
-<script src="/stock/static/js/pages/stock-detail.js"></script>
-<script src="/stock/static/js/pages/ai-analysis.js"></script>
-<script src="/stock/static/js/pages/backtest.js"></script>
-<script src="/stock/static/js/pages/settings.js"></script>
-<script src="/stock/static/js/pages/scan.js"></script>
-<script src="/stock/static/js/pages/market.js"></script>
-<script src="/stock/static/js/pages/chat.js"></script>
+<script src="<?= asset('js/core.js') ?>"></script>
+<script src="<?= asset('js/pages/home.js') ?>"></script>
+<script src="<?= asset('js/pages/stock-detail.js') ?>"></script>
+<script src="<?= asset('js/pages/ai-analysis.js') ?>"></script>
+<script src="<?= asset('js/pages/backtest.js') ?>"></script>
+<script src="<?= asset('js/pages/settings.js') ?>"></script>
+<script src="<?= asset('js/pages/scan.js') ?>"></script>
+<script src="<?= asset('js/pages/market.js') ?>"></script>
+<script src="<?= asset('js/pages/chat.js') ?>"></script>
 </body>
 </html>
