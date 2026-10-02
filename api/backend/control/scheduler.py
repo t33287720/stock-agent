@@ -1,15 +1,17 @@
 """
 背景排程：容器啟動時立即檢查一次，之後每小時檢查資料是否有新交易日。
-有新資料時自動執行「今日訊號掃描」並存入 DB，視設定對候選股做批次 AI 分析。
+有新資料時自動執行「今日訊號掃描」並存入 DB，視設定對買入／賣出候選做批次 AI 分析。
 """
 import asyncio
 import logging
 
 from backend.config import load_config
+from backend import cache
+from backend.control.data import price_store
 from backend.control.data.fetcher import last_trading_day_str
 from backend.db import portfolio_db as db
 from backend.control.strategy.ai_batch import run_batch_ai_analysis
-from backend.control.strategy.scanner import scan_today
+from backend.control.strategy.scanner import ai_targets, scan_today
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,17 @@ def run_scan_cycle() -> None:
     還沒有資料的「今天」），系統執行狀況列表就會出現資料=stale（紅）但
     AI=done（綠）的矛盾畫面。
     """
+    removed = cache.purge_old()
+    if removed:
+        logger.info("[scheduler] 清除 %d 個過期快取檔", removed)
+
+    # 先補最近幾個交易日的全市場行情，讓今天的收盤資料盡快進資料庫；
+    # 如果背景回補正在跑就略過（它也是新的日子優先）。
+    try:
+        price_store.sync(limit=price_store.RECENT_DAYS, wait=False)
+    except Exception:
+        logger.exception("[scheduler] 全市場行情同步失敗，改用逐支抓取")
+
     run_date = last_trading_day_str()
     state = db.get_scan_state()
 
@@ -64,17 +77,31 @@ def run_scan_cycle() -> None:
     if cfg.get("settings", {}).get("auto_scan_with_ai", True):
         db.start_phase(data_date, "ai")
         try:
-            all_candidates = result.get("all_candidates", [])
-            ai_result = run_batch_ai_analysis(all_candidates, data_date)
+            targets = ai_targets(result)
+            ai_result = run_batch_ai_analysis(targets, data_date)
             db.complete_ai(data_date, "done",
                             done_count=ai_result["analyzed"] + ai_result["skipped"],
-                            total_count=len(all_candidates))
+                            total_count=len(targets))
         except Exception:
             logger.exception("[scheduler] AI 批次分析失敗")
             db.complete_ai(data_date, "error", error="AI批次分析失敗")
 
     db.update_scan_state(data_date)
     logger.info("[scheduler] 自動掃描完成")
+
+
+PRICE_SYNC_INTERVAL_SECONDS = 1800
+
+
+async def price_sync_loop() -> None:
+    """背景把全市場行情回補到 price_store.HISTORY_CALENDAR_DAYS 天前（第一次約 20~25 分鐘），
+    之後每 30 分鐘檢查一次有沒有新的交易日要補。"""
+    while True:
+        try:
+            await asyncio.to_thread(price_store.sync)
+        except Exception:
+            logger.exception("[scheduler] 全市場行情回補失敗")
+        await asyncio.sleep(PRICE_SYNC_INTERVAL_SECONDS)
 
 
 async def scan_loop() -> None:

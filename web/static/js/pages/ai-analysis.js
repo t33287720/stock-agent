@@ -107,6 +107,15 @@ function formatStepResponse(step) {
 }
 
 // 顯示單一流程步驟的結果：只用一句人話總結 AI 決定/查到了什麼，不顯示原始 prompt（步驟標題本身已說明在做什麼）
+// AI 分析／聊天／今日訊號共用：把 trace 渲染成一串可展開的「步驟 N」區塊
+function renderTraceSteps(trace, fontSize = 12) {
+  return trace.map((step, i) => `
+        <details style="border:1px solid var(--border);border-radius:6px;padding:5px 8px">
+          <summary style="font-size:${fontSize}px;font-weight:600;cursor:pointer">步驟 ${i + 1}：${escapeHtml(step.label)}</summary>
+          <div style="margin-top:2px">${renderStepBody(step)}</div>
+        </details>`).join('');
+}
+
 function renderStepBody(step) {
   if (step.response === undefined) {
     const pendingText = step.label.includes('SearXNG') ? '搜尋中...' : 'LLM 運算中...';
@@ -192,11 +201,7 @@ function renderAiResult(data) {
     <details style="margin-bottom:14px">
       <summary style="font-size:12px;color:var(--text-muted);cursor:pointer">🔬 顯示完整流程（送給 LLM 的 prompt 與回應）</summary>
       <div style="display:flex;flex-direction:column;gap:5px;margin-top:6px">
-        ${data.trace.map((step, i) => `
-        <details style="border:1px solid var(--border);border-radius:6px;padding:5px 8px">
-          <summary style="font-size:12px;font-weight:600;cursor:pointer">步驟 ${i + 1}：${escapeHtml(step.label)}</summary>
-          <div style="margin-top:2px">${renderStepBody(step)}</div>
-        </details>`).join('')}
+        ${renderTraceSteps(data.trace, 12)}
       </div>
     </details>` : ''}
     <p style="font-size:11px;color:var(--text-muted);border-top:1px solid var(--border);padding-top:10px">

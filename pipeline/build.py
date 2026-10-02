@@ -4,10 +4,11 @@
     python pipeline/build.py [資料夾]        # 預設 pipeline/data
 
 資料夾裡的兩個檔案：
-    history.csv.gz      最近 KEEP_DAYS 個交易日的全市場股價（本程式自己維護）
+    history-v2.csv.gz   最近 KEEP_DAYS 個交易日的全市場股價（本程式自己維護；v2 = 上櫃改用
+                        不含盤後定價的成交量，舊檔口徑不同所以換檔名重新回補）
     stocks-latest.json  給 App 讀的每日快照
 
-第一次執行（沒有 history.csv.gz）會自動往回補 KEEP_DAYS 個交易日，約需 10-20 分鐘；
+第一次執行（沒有 history-v2.csv.gz）會自動往回補 KEEP_DAYS 個交易日，約需 10-20 分鐘；
 之後每次只補上次到今天之間缺的日子。
 """
 import json
@@ -84,7 +85,7 @@ def add_valuation(snapshot: pd.DataFrame, day: date) -> tuple[pd.DataFrame, bool
 def main():
     data_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
-    history_file = data_dir / "history.csv.gz"
+    history_file = data_dir / "history-v2.csv.gz"
 
     history = (pd.read_csv(history_file, dtype={"code": str, "date": str})
                if history_file.exists() else pd.DataFrame())

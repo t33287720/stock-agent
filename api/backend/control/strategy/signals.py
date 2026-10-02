@@ -207,21 +207,11 @@ def run_backtest(ticker: str, df: pd.DataFrame, with_fee: bool = True) -> Backte
                 exit_reason = f"停利 (+{change*100:.1f}%)"
 
         if sig == -1 and position > 0:
-            sell_fee   = position * price * (comm + tax)
-            proceeds   = position * price - sell_fee
-            cost_basis = position * entry_price
-            buy_fee    = cost_basis * comm
-            pnl        = proceeds - cost_basis - buy_fee
-            pnl_pct    = pnl / cost_basis * 100
-            total_fee += sell_fee + buy_fee
-            capital   += proceeds
-            trades.append(Trade(
-                entry_date=entry_date, entry_price=entry_price, entry_reason=entry_reason,
-                exit_date=date_str, exit_price=price, exit_reason=exit_reason,
-                shares=position,
-                pnl=round(pnl, 2), pnl_pct=round(pnl_pct, 2),
-                fee_paid=round(sell_fee + buy_fee, 2),
-            ))
+            trade, proceeds, fee = _close_position(position, entry_price, entry_date, entry_reason,
+                                                   date_str, price, exit_reason, comm, tax)
+            trades.append(trade)
+            total_fee  += fee
+            capital    += proceeds
             position    = 0
             entry_price = 0.0
 
@@ -243,23 +233,12 @@ def run_backtest(ticker: str, df: pd.DataFrame, with_fee: bool = True) -> Backte
 
     # Close any open position at last price
     if position > 0:
-        last_price    = float(df["Close"].iloc[-1])
-        sell_fee      = position * last_price * (comm + tax)
-        proceeds      = position * last_price - sell_fee
-        cost_basis    = position * entry_price
-        buy_fee_final = cost_basis * comm
-        pnl           = proceeds - cost_basis - buy_fee_final
-        pnl_pct       = pnl / cost_basis * 100
-        total_fee    += sell_fee + buy_fee_final
-        capital      += proceeds
-        trades.append(Trade(
-            entry_date=entry_date, entry_price=entry_price, entry_reason=entry_reason,
-            exit_date=str(df.index[-1])[:10], exit_price=last_price,
-            exit_reason="回測結束（持倉中）",
-            shares=position,
-            pnl=round(pnl, 2), pnl_pct=round(pnl_pct, 2),
-            fee_paid=round(sell_fee + buy_fee_final, 2),
-        ))
+        trade, proceeds, fee = _close_position(position, entry_price, entry_date, entry_reason,
+                                               str(df.index[-1])[:10], float(df["Close"].iloc[-1]),
+                                               "回測結束（持倉中）", comm, tax)
+        trades.append(trade)
+        total_fee += fee
+        capital   += proceeds
 
     final_capital = capital
     total_return  = (final_capital - initial_capital) / initial_capital * 100
@@ -282,6 +261,25 @@ def run_backtest(ticker: str, df: pd.DataFrame, with_fee: bool = True) -> Backte
         trades=[vars(t) for t in trades],
         equity_curve=equity_curve,
     )
+
+
+def _close_position(shares: int, entry_price: float, entry_date: str, entry_reason: str,
+                    exit_date: str, exit_price: float, exit_reason: str,
+                    comm: float, tax: float) -> tuple[Trade, float, float]:
+    """賣出全部持股，回傳 (交易紀錄, 賣出實拿金額, 這筆交易的買賣手續費＋稅)。買進手續費在這裡一併計入損益。"""
+    sell_fee   = shares * exit_price * (comm + tax)
+    proceeds   = shares * exit_price - sell_fee
+    cost_basis = shares * entry_price
+    buy_fee    = cost_basis * comm
+    pnl        = proceeds - cost_basis - buy_fee
+    trade = Trade(
+        entry_date=entry_date, entry_price=entry_price, entry_reason=entry_reason,
+        exit_date=exit_date, exit_price=exit_price, exit_reason=exit_reason,
+        shares=shares,
+        pnl=round(pnl, 2), pnl_pct=round(pnl / cost_basis * 100, 2),
+        fee_paid=round(sell_fee + buy_fee, 2),
+    )
+    return trade, proceeds, sell_fee + buy_fee
 
 
 # ── Shared hard-rule filters (used by scanner) ─────────────────────────────────

@@ -98,11 +98,7 @@ function finalizeChatResult(msgId, result) {
     <details style="margin-top:6px">
       <summary style="font-size:11px;color:var(--text-muted);cursor:pointer">🔬 顯示完整流程（${result.trace.length} 步）</summary>
       <div style="display:flex;flex-direction:column;gap:5px;margin-top:5px">
-        ${result.trace.map((step, i) => `
-        <details style="border:1px solid var(--border);border-radius:6px;padding:5px 8px">
-          <summary style="font-size:11px;font-weight:600;cursor:pointer">步驟 ${i + 1}：${escapeHtml(step.label)}</summary>
-          <div style="margin-top:2px">${renderStepBody(step)}</div>
-        </details>`).join('')}
+        ${renderTraceSteps(result.trace, 11)}
       </div>
     </details>` : '';
 

@@ -3,7 +3,6 @@
 """
 import asyncio
 import json
-import math
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
@@ -18,19 +17,26 @@ from backend.control.llm.analysis import (
     analyze_stock_stream,
     get_cached_analysis, save_analysis_cache,
 )
-from backend.utils import TAIPEI
+from backend.utils import TAIPEI, to_float
 
 router = APIRouter()
 
 
 def _safe(val):
-    if val is None:
-        return None
-    try:
-        f = float(val)
-        return None if math.isnan(f) else round(f, 4)
-    except (TypeError, ValueError):
-        return None
+    f = to_float(val)
+    return None if f is None else round(f, 4)
+
+
+async def _load_stock(ticker: str, days: int):
+    """並行抓 K 線和基本面（省去串行等待），算好指標與訊號，回傳 (df, fundamental)。"""
+    df, fund = await asyncio.gather(
+        asyncio.to_thread(get_stock_history, ticker, days),
+        asyncio.to_thread(get_fundamental, ticker),
+    )
+    if df.empty:
+        raise HTTPException(404, f"找不到 {ticker} 的歷史資料")
+    df = await asyncio.to_thread(lambda: generate_signals(calculate_indicators(df)))
+    return df, fund
 
 
 def _build_history(df) -> list[dict]:
@@ -64,7 +70,7 @@ def _build_history(df) -> list[dict]:
 
 @router.get("/api/top100")
 async def top100():
-    stocks = get_top100_stocks()
+    stocks = await asyncio.to_thread(get_top100_stocks)
     return {
         "stocks":     stocks,
         "count":      len(stocks),
@@ -76,14 +82,7 @@ async def top100():
 
 @router.get("/api/stock/{ticker}")
 async def stock_analysis(ticker: str, days: int = 365):
-    # 並行抓 K 線和基本面，省去串行等待
-    df_task   = asyncio.to_thread(get_stock_history, ticker, days)
-    fund_task = asyncio.to_thread(get_fundamental, ticker)
-    df, fund  = await asyncio.gather(df_task, fund_task)
-    if df.empty:
-        raise HTTPException(404, f"找不到 {ticker} 的歷史資料")
-    df = calculate_indicators(df)
-    df = generate_signals(df)
+    df, fund = await _load_stock(ticker, days)
     return {
         "ticker":      ticker,
         "name":        fund.get("name", ticker),
@@ -95,7 +94,7 @@ async def stock_analysis(ticker: str, days: int = 365):
 
 @router.get("/api/stock/{ticker}/news")
 async def stock_news(ticker: str):
-    fund = get_fundamental(ticker)
+    fund = await asyncio.to_thread(get_fundamental, ticker)
     news = await asyncio.to_thread(get_stock_news, ticker, fund.get("name", ticker))
     return {"news": news}
 
@@ -110,14 +109,7 @@ async def stock_ai_analysis(ticker: str, force: bool = False):
                 yield json.dumps({"type": "result", "result": {**cached, "from_cache": True}}, ensure_ascii=False) + "\n"
             return StreamingResponse(cached_stream(), media_type="application/x-ndjson")
 
-    df_task = asyncio.to_thread(get_stock_history, ticker, 365)
-    fund_task = asyncio.to_thread(get_fundamental, ticker)
-    df, fund = await asyncio.gather(df_task, fund_task)
-    if df.empty:
-        raise HTTPException(404, f"找不到 {ticker} 的歷史資料")
-
-    df = calculate_indicators(df)
-    df = generate_signals(df)
+    df, fund = await _load_stock(ticker, 365)
     technical = get_indicator_summary(df)
     name = fund.get("name", ticker)
     news = await asyncio.to_thread(get_stock_news, ticker, name)

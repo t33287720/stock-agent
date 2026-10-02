@@ -38,3 +38,9 @@ Thumbs.db
 
 # 每日資料流程的本機輸出（正式資料由 GitHub Actions 產生）
 pipeline/data/
+
+# 測試
+.pytest_cache/
+
+# 資料庫備份（db/backup.sh 產生）
+backups/

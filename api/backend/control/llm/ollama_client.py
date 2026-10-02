@@ -2,26 +2,21 @@
 Ollama 傳輸層 — 純粹負責呼叫本機 Ollama API 並解析 JSON 回應，不含任何股票領域知識。
 """
 import json
-import os
 import re
 
 import requests
 
-from backend.config import load_config
+from backend.config import DEFAULT_CONFIG, load_config
 
-DEFAULT_OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://host.docker.internal:11434")
-DEFAULT_MODEL = "qwen2.5:7b"
 REQUEST_TIMEOUT = 90
 
 
-def _resolve_url() -> str:
+def _ollama_settings() -> tuple[str, str]:
+    """回傳 (Ollama 網址, 模型名稱)；設定檔沒填時用 DEFAULT_CONFIG 的預設值。"""
     settings = load_config().get("settings", {})
-    return settings.get("ollama_url") or DEFAULT_OLLAMA_URL
-
-
-def _resolve_model() -> str:
-    settings = load_config().get("settings", {})
-    return settings.get("llm_model") or DEFAULT_MODEL
+    defaults = DEFAULT_CONFIG["settings"]
+    return (settings.get("ollama_url") or defaults["ollama_url"],
+            settings.get("llm_model") or defaults["llm_model"])
 
 
 def _parse_json_relaxed(text: str) -> dict | None:
@@ -66,7 +61,8 @@ def generate_json(prompt: str, system: str | None = None, model: str | None = No
                    temperature: float = 0.2, num_predict: int = 700,
                    num_ctx: int | None = None) -> dict | None:
     """呼叫 Ollama /api/generate（JSON mode），回傳解析後的 dict，失敗回傳 None。"""
-    url = f"{_resolve_url()}/api/generate"
+    base_url, default_model = _ollama_settings()
+    url = f"{base_url}/api/generate"
     options = {
         "temperature": temperature,
         "top_p": 0.9,
@@ -75,7 +71,7 @@ def generate_json(prompt: str, system: str | None = None, model: str | None = No
     if num_ctx is not None:
         options["num_ctx"] = num_ctx
     body = {
-        "model": model or _resolve_model(),
+        "model": model or default_model,
         "prompt": prompt,
         "format": "json",
         "stream": False,
@@ -92,11 +88,3 @@ def generate_json(prompt: str, system: str | None = None, model: str | None = No
         print(f"[ollama_client] generate_json 失敗: {e}")
         return None
 
-
-def check_ollama_available() -> bool:
-    """快速檢查 Ollama 服務是否可連線（供診斷用）。"""
-    try:
-        resp = requests.get(f"{_resolve_url()}/api/tags", timeout=5)
-        return resp.ok
-    except Exception:
-        return False

@@ -9,9 +9,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 from backend.control.analysis.technical import calculate_indicators, get_indicator_summary
 from backend.control.data.fetcher import get_stock_history, get_fundamental, search_tickers
-from backend.control.data.news import get_stock_news, search_news
+from backend.control.data.news import get_stock_news
 from backend.control.llm.analysis import build_stock_context
-from backend.control.llm.ollama_client import generate_json
+from backend.control.llm.react import llm_step, record, search_rounds, trace_step
 
 CHAT_MAX_SEARCH_ROUNDS = 4  # 比個股分析的 10 輪少，聊天要即時性
 CHAT_NUM_CTX = 12288
@@ -52,10 +52,6 @@ _CHAT_VERIFY_SYSTEM_PROMPT = (
 )
 
 
-def _trace_step(label: str, response, system: str | None = None, prompt: str | None = None) -> dict:
-    return {"label": label, "system": system, "prompt": prompt, "response": response}
-
-
 def _format_history(history: list[dict]) -> str:
     if not history:
         return "（無先前對話）"
@@ -66,17 +62,6 @@ def _format_history(history: list[dict]) -> str:
         if content:
             lines.append(f"{role}：{content}")
     return "\n".join(lines) if lines else "（無先前對話）"
-
-
-def _format_search_block(round_no: int, query: str, results: list[dict]) -> str:
-    if not results:
-        return f"搜尋第 {round_no} 輪（關鍵字：{query}）：（查無結果）"
-    lines = [f"搜尋第 {round_no} 輪（關鍵字：{query}）："]
-    for r in results:
-        title = r.get("title") or ""
-        body = (r.get("body") or "")[:100]
-        lines.append(f"- {title}：{body}")
-    return "\n".join(lines)
 
 
 def _fetch_stock_block(ticker: str, name: str) -> tuple[str, str, str | None, list[dict], str | None]:
@@ -103,7 +88,7 @@ def chat_stream(history: list[dict], message: str):
     最後 yield {"type": "result", "result": {reply, used_tickers, trace}}。
     """
     history_block = _format_history(history)
-    trace = []
+    trace: list[dict] = []
 
     # ── 1. 理解問題：判斷使用者問的是哪支股票 ──────────────────────────────
     extract_prompt = (
@@ -111,23 +96,17 @@ def chat_stream(history: list[dict], message: str):
         f"使用者最新問題：{message}\n\n"
         "請判斷這個問題有沒有提到特定股票或公司，輸出 JSON。"
     )
-    yield {"type": "step_start", "step": {"label": "理解問題", "system": _EXTRACT_SYSTEM_PROMPT, "prompt": extract_prompt}}
-    extracted = generate_json(extract_prompt, system=_EXTRACT_SYSTEM_PROMPT, temperature=0.1, num_predict=200)
-    step = _trace_step("理解問題", extracted, system=_EXTRACT_SYSTEM_PROMPT, prompt=extract_prompt)
-    trace.append(step)
-    yield {"type": "step_done", "step": step}
-
+    extracted = yield from llm_step(trace, "理解問題", extract_prompt, _EXTRACT_SYSTEM_PROMPT,
+                                    temperature=0.1, num_predict=200)
     queries = []
     if isinstance(extracted, dict):
         queries = [str(q).strip() for q in (extracted.get("queries") or []) if str(q).strip()]
 
     # ── 2. 代號解析（純程式比對，不呼叫 LLM）─────────────────────────────
     used_tickers: list[dict] = []
-    seen_tickers = set()
     for q in queries:
         for cand in search_tickers(q, limit=1):
-            if cand["ticker"] not in seen_tickers:
-                seen_tickers.add(cand["ticker"])
+            if all(t["ticker"] != cand["ticker"] for t in used_tickers):
                 used_tickers.append(cand)
         if len(used_tickers) >= MAX_TICKERS:
             break
@@ -135,82 +114,39 @@ def chat_stream(history: list[dict], message: str):
 
     if used_tickers:
         resolved = "、".join(f"{t['name']}（{t['ticker']}）" for t in used_tickers)
-        step = _trace_step("解析股票", {"resolved": resolved})
-        trace.append(step)
-        yield {"type": "step_done", "step": step}
+        yield from record(trace, trace_step("解析股票", {"resolved": resolved}))
     elif queries:
-        step = _trace_step("解析股票", {"resolved": None,
-                            "note": f"找不到符合「{'、'.join(queries)}」的股票，將以一般方式回答"})
-        trace.append(step)
-        yield {"type": "step_done", "step": step}
+        yield from record(trace, trace_step("解析股票", {
+            "resolved": None, "note": f"找不到符合「{'、'.join(queries)}」的股票，將以一般方式回答"}))
 
     # ── 3. 抓股票資料（平行處理，含個股新聞）─────────────────────────────
     stock_blocks = []
-    sources: list[dict] = []
-    seen_urls = set()
+    stock_news: list[dict] = []
     if used_tickers:
         with ThreadPoolExecutor(max_workers=min(4, len(used_tickers))) as ex:
             for ticker, name, block, news, err in ex.map(lambda t: _fetch_stock_block(t["ticker"], t["name"]), used_tickers):
                 label = f"查詢 {name}（{ticker}）資料"
                 if block:
                     stock_blocks.append(block)
-                    step = _trace_step(label, {"summary": f"已取得技術面與基本面資料，相關新聞 {len(news)} 則"})
-                    for r in news:
-                        url = r.get("url")
-                        if url and url not in seen_urls:
-                            seen_urls.add(url)
-                            sources.append(r)
+                    stock_news += news
+                    step = trace_step(label, {"summary": f"已取得技術面與基本面資料，相關新聞 {len(news)} 則"})
                 else:
-                    step = _trace_step(label, {"error": err})
-                trace.append(step)
-                yield {"type": "step_done", "step": step}
-
-    context = "\n\n".join(stock_blocks) if stock_blocks else "（本次問題未鎖定特定股票，無股票資料）"
+                    step = trace_step(label, {"error": err})
+                yield from record(trace, step)
 
     # ── 4. 延伸搜尋迴圈 ────────────────────────────────────────────────────
-    query_counts: dict[str, int] = {}
-    failed_queries: list[str] = []
-
-    for round_no in range(1, CHAT_MAX_SEARCH_ROUNDS + 1):
-        label = f"搜尋判斷（第 {round_no}/{CHAT_MAX_SEARCH_ROUNDS} 輪）"
-        decision_prompt = (
+    context, searches = yield from search_rounds(
+        trace, "\n\n".join(stock_blocks) if stock_blocks else "（本次問題未鎖定特定股票，無股票資料）",
+        max_rounds=CHAT_MAX_SEARCH_ROUNDS, num_ctx=CHAT_NUM_CTX,
+        decision_label="搜尋判斷", decision_system=_CHAT_SEARCH_DECISION_SYSTEM_PROMPT,
+        decision_prompt=lambda ctx, _round, _failed: (
             f"對話：\n{history_block}\n使用者：{message}\n\n"
-            f"目前已有的資料：\n{context}\n\n"
+            f"目前已有的資料：\n{ctx}\n\n"
             "請判斷是否需要再搜尋更多資訊才能回答，並輸出 JSON。"
-        )
-        yield {"type": "step_start", "step": {"label": label, "system": _CHAT_SEARCH_DECISION_SYSTEM_PROMPT, "prompt": decision_prompt}}
-        decision = generate_json(decision_prompt, system=_CHAT_SEARCH_DECISION_SYSTEM_PROMPT,
-                                  temperature=0.2, num_predict=150, num_ctx=CHAT_NUM_CTX)
-        step = _trace_step(label, decision, system=_CHAT_SEARCH_DECISION_SYSTEM_PROMPT, prompt=decision_prompt)
-        trace.append(step)
-        yield {"type": "step_done", "step": step}
-
-        if not isinstance(decision, dict) or not decision.get("need_search"):
-            break
-        query = str(decision.get("search_query") or "").strip()[:100]
-        if not query:
-            break
-
-        query_counts[query] = query_counts.get(query, 0) + 1
-        page = query_counts[query]
-        search_label = f"SearXNG 搜尋（第 {round_no} 輪）：「{query}」"
-        if page > 1:
-            search_label += f"（第 {page} 頁）"
-        yield {"type": "step_start", "step": {"label": search_label, "system": None, "prompt": None}}
-        results = search_news(query, limit=5, page=page)
-        step = _trace_step(search_label, {"query": query, "page": page, "results": results})
-        trace.append(step)
-        yield {"type": "step_done", "step": step}
-
-        for r in results:
-            url = r.get("url")
-            if url and url not in seen_urls:
-                seen_urls.add(url)
-                sources.append(r)
-
-        context += "\n\n" + _format_search_block(round_no, query, results)
-        if not results and query not in failed_queries:
-            failed_queries.append(query)
+        ),
+        block_title="搜尋",
+    )
+    sources = _dedupe_by_url(stock_news + [r for s in searches for r in s["results"]])
 
     # ── 5. 回答 ────────────────────────────────────────────────────────────
     answer_prompt = (
@@ -219,44 +155,24 @@ def chat_stream(history: list[dict], message: str):
         f"可用資料：\n{context}\n\n"
         "請回答使用者的問題，輸出 JSON。"
     )
-    yield {"type": "step_start", "step": {"label": "整理回答", "system": _CHAT_SYSTEM_PROMPT, "prompt": answer_prompt}}
-    raw = generate_json(answer_prompt, system=_CHAT_SYSTEM_PROMPT, temperature=0.4,
-                         num_predict=700, num_ctx=CHAT_NUM_CTX)
-    step = _trace_step("整理回答", raw, system=_CHAT_SYSTEM_PROMPT, prompt=answer_prompt)
-    trace.append(step)
-    yield {"type": "step_done", "step": step}
-
-    reply = ""
-    if isinstance(raw, dict):
-        reply = str(raw.get("reply", "")).strip()
-    if not reply:
-        reply = "抱歉，本機 LLM 無回應或逾時，請稍後再試。"
+    raw = yield from llm_step(trace, "整理回答", answer_prompt, _CHAT_SYSTEM_PROMPT,
+                              temperature=0.4, num_predict=700, num_ctx=CHAT_NUM_CTX)
+    reply = _reply_text(raw) or "抱歉，本機 LLM 無回應或逾時，請稍後再試。"
 
     # ── 6. 二次驗證：僅在有股票資料／搜尋結果可核對時執行，純聊天則略過 ──────────
     verified: bool | None = None
-    has_context_data = bool(stock_blocks) or bool(sources)
-    if has_context_data:
+    if stock_blocks or sources:
         verify_prompt = (
             f"可用資料：\n{context}\n\n"
             f"以下是另一位助手根據上述資料，回覆使用者「{message}」的內容：\n{reply}\n\n"
             "請核對回覆中的每一句具體陳述是否有上述資料支持，移除或修正查無依據的內容，"
             '輸出修正後、格式相同的 JSON：{"reply": "..."}。'
         )
-        yield {"type": "step_start", "step": {"label": "二次驗證", "system": _CHAT_VERIFY_SYSTEM_PROMPT, "prompt": verify_prompt}}
-        verified_raw = generate_json(verify_prompt, system=_CHAT_VERIFY_SYSTEM_PROMPT,
-                                      temperature=0.1, num_predict=700, num_ctx=CHAT_NUM_CTX)
-        step = _trace_step("二次驗證", verified_raw, system=_CHAT_VERIFY_SYSTEM_PROMPT, prompt=verify_prompt)
-        trace.append(step)
-        yield {"type": "step_done", "step": step}
-
-        verified_reply = ""
-        if isinstance(verified_raw, dict):
-            verified_reply = str(verified_raw.get("reply", "")).strip()
-        if verified_reply:
-            reply = verified_reply
-            verified = True
-        else:
-            verified = False
+        verified_raw = yield from llm_step(trace, "二次驗證", verify_prompt, _CHAT_VERIFY_SYSTEM_PROMPT,
+                                           temperature=0.1, num_predict=700, num_ctx=CHAT_NUM_CTX)
+        verified_reply = _reply_text(verified_raw)
+        verified = bool(verified_reply)
+        reply = verified_reply or reply
 
     yield {"type": "result", "result": {
         "reply": reply,
@@ -265,3 +181,17 @@ def chat_stream(history: list[dict], message: str):
         "verified": verified,
         "trace": trace,
     }}
+
+
+def _reply_text(raw) -> str:
+    return str(raw.get("reply", "")).strip() if isinstance(raw, dict) else ""
+
+
+def _dedupe_by_url(items: list[dict]) -> list[dict]:
+    seen, out = set(), []
+    for r in items:
+        url = r.get("url")
+        if url and url not in seen:
+            seen.add(url)
+            out.append(r)
+    return out

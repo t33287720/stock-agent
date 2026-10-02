@@ -22,6 +22,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:?請在 .env 設定 DB_PASSWORD}
       SEARXNG_URL: http://searxng:8080
       OLLAMA_URL: http://host.docker.internal:11434
+      DISABLE_BACKGROUND_JOBS: ${DISABLE_BACKGROUND_JOBS:-}   # 只有 CI 測試會設定
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -34,12 +35,14 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  # ── SearXNG（個股新聞搜尋，免 API key，主要供 api 內部呼叫；對外開放方便手動驗證搜尋結果）──
+  # ── SearXNG（個股新聞搜尋，免 API key，供 api 內部呼叫；本機可開 http://localhost:8081 手動驗證搜尋結果）──
   searxng:
     container_name: stock-searxng
     image: searxng/searxng:latest
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?請在 .env 設定 SEARXNG_SECRET（產生方式：openssl rand -hex 32）}
     ports:
-      - "8081:8080"
+      - "127.0.0.1:8081:8080"   # 只開放本機：關閉了流量限制，對外開放會變成別人的免費搜尋代理
     volumes:
       - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
     restart: unless-stopped
@@ -61,12 +64,31 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # ── 每日資料庫備份（./backups，保留 7 天；股價等資料可以重抓，所以不用留太久）──
+  backup:
+    container_name: stock-backup
+    image: postgres:15-alpine
+    environment:
+      PGHOST: db
+      PGUSER: ${DB_USER:-stockuser}
+      PGPASSWORD: ${DB_PASSWORD:?請在 .env 設定 DB_PASSWORD}
+      PGDATABASE: ${DB_NAME:-stockdb}
+      KEEP_DAYS: "7"
+    volumes:
+      - ./db/backup.sh:/backup.sh:ro
+      - ./backups:/backups
+    entrypoint: ["sh", "/backup.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
   # ── DB 管理介面（Adminer 管理 Postgres）───────────────────────────────────────
   adminer:
     container_name: stock-adminer
     image: adminer:latest
     ports:
-      - "8083:8080"
+      - "127.0.0.1:8083:8080"   # 只開放本機連線，管理介面不對外
     depends_on:
       - db
     restart: unless-stopped

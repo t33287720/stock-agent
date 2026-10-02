@@ -3,12 +3,9 @@
 採兩階段流程（生成 → 二次驗證）以降低幻覺風險，結果快取於 cache/（TTL 1 小時）。
 """
 import json
-import time
-from pathlib import Path
 
-from backend.control.data.fetcher import CACHE_DIR
-from backend.control.data.news import search_news
-from backend.control.llm.ollama_client import generate_json
+from backend import cache
+from backend.control.llm.react import llm_step, search_rounds
 
 AI_CACHE_TTL = 3600  # 1 小時
 MAX_SEARCH_ROUNDS = 10  # 個股 AI 分析最多再延伸搜尋幾輪
@@ -44,27 +41,12 @@ _SEARCH_DECISION_SYSTEM_PROMPT = (
 )
 
 
-def _ai_cache_path(ticker: str) -> Path:
-    return CACHE_DIR / f"ai_{ticker}.json"
-
-
 def get_cached_analysis(ticker: str) -> dict | None:
-    path = _ai_cache_path(ticker)
-    if not path.exists():
-        return None
-    if time.time() - path.stat().st_mtime > AI_CACHE_TTL:
-        return None
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, IOError):
-        path.unlink(missing_ok=True)
-        return None
+    return cache.read_json(f"ai_{ticker}", AI_CACHE_TTL)
 
 
 def save_analysis_cache(ticker: str, data: dict) -> None:
-    with open(_ai_cache_path(ticker), "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False)
+    cache.write_json(f"ai_{ticker}", data)
 
 
 # ── 共用：prompt 組裝 ──────────────────────────────────────────────────────────────
@@ -78,11 +60,6 @@ def _verify_prompt(context_block: str, first_result: dict) -> str:
         "移除查無依據的內容並調整信心分數，"
         "輸出修正後、格式完全相同的 JSON。"
     )
-
-
-def _verify_and_refine(context_block: str, first_result: dict) -> tuple[str, dict | None]:
-    prompt = _verify_prompt(context_block, first_result)
-    return prompt, generate_json(prompt, system=_VERIFY_SYSTEM_PROMPT, temperature=0.1, num_predict=700)
 
 
 def _search_decision_prompt(context_block: str, round_no: int, total: int,
@@ -115,22 +92,6 @@ def _main_analysis_prompt(context_block: str) -> str:
         "}\n"
         "key_reasons 請列出 2-4 點支持你判斷的具體依據，risks 請列出 1-3 點需注意的風險。"
     )
-
-
-def _trace_step(label: str, response, system: str | None = None, prompt: str | None = None) -> dict:
-    """記錄一個流程步驟（送給 LLM 的 prompt / SearXNG 查詢 + 收到的回應），供前端顯示完整流程。"""
-    return {"label": label, "system": system, "prompt": prompt, "response": response}
-
-
-def _format_extra_search_block(round_no: int, query: str, results: list[dict]) -> str:
-    if not results:
-        return f"延伸搜尋第 {round_no} 輪（關鍵字：{query}）：（查無結果）"
-    lines = [f"延伸搜尋第 {round_no} 輪（關鍵字：{query}）："]
-    for r in results:
-        title = r.get("title") or ""
-        body = (r.get("body") or "")[:100]
-        lines.append(f"- {title}：{body}")
-    return "\n".join(lines)
 
 
 # ── 個股 AI 分析 ───────────────────────────────────────────────────────────────────
@@ -176,63 +137,23 @@ def analyze_stock_stream(ticker: str, name: str, technical: dict, fundamental: d
     - {"type": "step_done",  "step": {label, system, prompt, response}}：該步驟完成
     最後 yield {"type": "result", "result": {...}}（與舊版 analyze_stock 回傳格式相同）。
     """
-    context = build_stock_context(ticker, name, technical, fundamental, news)
-    trace = []
-    extra_searches = []
-    query_counts: dict[str, int] = {}
-    failed_queries: list[str] = []
+    trace: list[dict] = []
+    context, extra_searches = yield from search_rounds(
+        trace, build_stock_context(ticker, name, technical, fundamental, news),
+        max_rounds=MAX_SEARCH_ROUNDS, num_ctx=ANALYSIS_NUM_CTX,
+        decision_label="延伸搜尋判斷", decision_system=_SEARCH_DECISION_SYSTEM_PROMPT,
+        decision_prompt=lambda ctx, round_no, failed: _search_decision_prompt(ctx, round_no, MAX_SEARCH_ROUNDS, failed),
+        block_title="延伸搜尋",
+    )
 
-    for round_no in range(1, MAX_SEARCH_ROUNDS + 1):
-        label = f"延伸搜尋判斷（第 {round_no}/{MAX_SEARCH_ROUNDS} 輪）"
-        prompt = _search_decision_prompt(context, round_no, MAX_SEARCH_ROUNDS, failed_queries)
-        yield {"type": "step_start", "step": {"label": label, "system": _SEARCH_DECISION_SYSTEM_PROMPT, "prompt": prompt}}
-        decision = generate_json(prompt, system=_SEARCH_DECISION_SYSTEM_PROMPT, temperature=0.2,
-                                  num_predict=150, num_ctx=ANALYSIS_NUM_CTX)
-        step = _trace_step(label, decision, system=_SEARCH_DECISION_SYSTEM_PROMPT, prompt=prompt)
-        trace.append(step)
-        yield {"type": "step_done", "step": step}
-
-        if not isinstance(decision, dict) or not decision.get("need_search"):
-            break
-        query = str(decision.get("search_query") or "").strip()[:100]
-        if not query:
-            break
-
-        query_counts[query] = query_counts.get(query, 0) + 1
-        page = query_counts[query]
-        search_label = f"SearXNG 搜尋（第 {round_no} 輪）：「{query}」"
-        if page > 1:
-            search_label += f"（第 {page} 頁）"
-        yield {"type": "step_start", "step": {"label": search_label, "system": None, "prompt": None}}
-        results = search_news(query, limit=5, page=page)
-        step = _trace_step(search_label, {"query": query, "page": page, "results": results})
-        trace.append(step)
-        yield {"type": "step_done", "step": step}
-
-        context += "\n\n" + _format_extra_search_block(round_no, query, results)
-        extra_searches.append({"round": round_no, "query": query, "page": page, "results": results})
-        if not results and query not in failed_queries:
-            failed_queries.append(query)
-
-    prompt = _main_analysis_prompt(context)
-    yield {"type": "step_start", "step": {"label": "主分析", "system": _SYSTEM_PROMPT, "prompt": prompt}}
-    raw = generate_json(prompt, system=_SYSTEM_PROMPT, num_predict=800, num_ctx=ANALYSIS_NUM_CTX)
-    step = _trace_step("主分析", raw, system=_SYSTEM_PROMPT, prompt=prompt)
-    trace.append(step)
-    yield {"type": "step_done", "step": step}
-
+    raw = yield from llm_step(trace, "主分析", _main_analysis_prompt(context), _SYSTEM_PROMPT,
+                              num_predict=800, num_ctx=ANALYSIS_NUM_CTX)
     if raw is None:
         yield {"type": "result", "result": _fallback_result("本機 LLM 無回應或逾時，請稍後再試", extra_searches, trace)}
         return
 
-    verify_prompt = _verify_prompt(context, raw)
-    yield {"type": "step_start", "step": {"label": "二次驗證", "system": _VERIFY_SYSTEM_PROMPT, "prompt": verify_prompt}}
-    verified = generate_json(verify_prompt, system=_VERIFY_SYSTEM_PROMPT, temperature=0.1,
-                              num_predict=700, num_ctx=ANALYSIS_NUM_CTX)
-    step = _trace_step("二次驗證", verified, system=_VERIFY_SYSTEM_PROMPT, prompt=verify_prompt)
-    trace.append(step)
-    yield {"type": "step_done", "step": step}
-
+    verified = yield from llm_step(trace, "二次驗證", _verify_prompt(context, raw), _VERIFY_SYSTEM_PROMPT,
+                                   temperature=0.1, num_predict=700, num_ctx=ANALYSIS_NUM_CTX)
     if verified is not None:
         result = _normalize_result(verified, verified_flag=True, extra_searches=extra_searches, trace=trace)
     else:

@@ -7,7 +7,7 @@ general:
   instance_name: "stock-news-search"
 
 server:
-  secret_key: "b83fbe59678f117816c704d7c88f286a5921fde586a05eb49da6d3aa92a546c1"
+  # secret_key 不放在這裡（repo 是公開的）：由 docker-compose 從 .env 的 SEARXNG_SECRET 帶入
   limiter: false
 
 search:

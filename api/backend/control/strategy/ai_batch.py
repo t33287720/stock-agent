@@ -1,5 +1,5 @@
 """
-批次 ReAct AI 分析 — 對今日訊號掃描抓到的股票逐一執行完整的個股 AI 分析流程
+批次 ReAct AI 分析 — 對今日訊號掃描的買入／賣出候選逐一執行完整的個股 AI 分析流程
 （與 `/api/stock/{ticker}/ai-analysis` 相同：最多 10 輪延伸搜尋 + 二次驗證），
 結果存入 stock_ai_results，供今日訊號掃描頁面使用。
 
@@ -7,6 +7,7 @@ Ollama 為單一 GPU，無法平行處理多個 LLM 請求，因此序列執行�
 已有當日結果的股票會跳過，容器重啟後可從中斷處繼續。
 """
 import logging
+import threading
 
 from backend.control.data.fetcher import get_fundamental
 from backend.control.data.news import get_stock_news
@@ -15,18 +16,32 @@ import backend.db.portfolio_db as db
 
 logger = logging.getLogger(__name__)
 
+# 背景排程與手動「重新分析」共用同一把鎖：同一時間只會有一批在跑，
+# 避免兩批同時把請求丟給單一 GPU 的 Ollama、互相拖慢甚至重複分析同一支股票。
+_batch_lock = threading.Lock()
 
-def run_batch_ai_analysis(all_candidates: list[dict], scan_date: str) -> dict:
-    """對 all_candidates 逐一執行完整 ReAct AI 分析，存入 stock_ai_results。
+
+def is_batch_running() -> bool:
+    return _batch_lock.locked()
+
+
+def run_batch_ai_analysis(candidates: list[dict], scan_date: str) -> dict:
+    """對 candidates（scanner.ai_targets() 挑出的買賣候選）逐一執行完整 ReAct AI 分析，存入 stock_ai_results。
 
     已有當日成功結果者跳過 → 容器重啟後可從中斷處繼續；
     先前因本機 LLM 無回應等錯誤而失敗的項目會重新分析。
+    若已有另一批正在執行，會等它跑完再開始（屆時已完成的會直接跳過）。
     """
+    with _batch_lock:
+        return _run_batch(candidates, scan_date)
+
+
+def _run_batch(candidates: list[dict], scan_date: str) -> dict:
     done = db.get_stock_ai_results_for_date(scan_date)
-    skipped = sum(1 for r in done.values() if not r.get("error"))
+    skipped = sum(1 for c in candidates if c["ticker"] in done and not done[c["ticker"]].get("error"))
     analyzed = failed = 0
 
-    for c in all_candidates:
+    for c in candidates:
         ticker = c["ticker"]
         if ticker in done and not done[ticker].get("error"):
             continue

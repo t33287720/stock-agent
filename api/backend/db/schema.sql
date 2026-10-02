@@ -1,5 +1,5 @@
 -- 台股 AI 分析系統 — PostgreSQL Schema
--- 與 portfolio_db.init_db() 相同（API 啟動時會自動建立，這份檔案供手動查閱／建立用）
+-- API 啟動時 portfolio_db.init_db() 會直接執行這份檔案（唯一的 DDL 來源）；也可手動執行
 -- 執行方式: psql -U stockuser -d stockdb -f schema.sql
 
 -- 自動掃描狀態（永遠只有一列，id = 1）
@@ -46,6 +46,26 @@ CREATE TABLE IF NOT EXISTS daily_run_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_stock_ai_results_scan_date ON stock_ai_results(scan_date);
+
+-- 全市場每日收盤行情（上市＋上櫃，一般股票與 ETF）。每個交易日只打兩次 API 就有全部股票，
+-- 個股歷史股價直接從這裡讀，不用逐支股票打證交所（見 control/data/price_store.py）
+CREATE TABLE IF NOT EXISTS daily_prices (
+    ticker     VARCHAR(10) NOT NULL,
+    trade_date DATE NOT NULL,
+    open       DOUBLE PRECISION,
+    high       DOUBLE PRECISION,
+    low        DOUBLE PRECISION,
+    close      DOUBLE PRECISION NOT NULL,
+    volume     BIGINT,                               -- 成交股數
+    PRIMARY KEY (ticker, trade_date)
+);
+
+-- 哪些交易日已經完整抓過（上市＋上櫃都有）；rows = 0 代表那天其實休市
+CREATE TABLE IF NOT EXISTS daily_price_sync (
+    trade_date DATE PRIMARY KEY,
+    rows       INTEGER NOT NULL,
+    synced_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 -- ── 常用查詢範例 ──────────────────────────────────────────────────────────────
 
