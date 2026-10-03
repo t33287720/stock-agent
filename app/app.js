@@ -117,7 +117,9 @@ function parseBackup(text, validCodes) {
   if (!Array.isArray(rawRules) || !Array.isArray(rawWatch)) return null;
   if (!rawRules.every(r => r && r.name && Array.isArray(r.conditions) && r.sort)) return null;
   return {
-    rules: rawRules.filter(r => r.conditions.every(c => FIELDS[c.field]) && FIELDS[r.sort.field]),
+    rules: rawRules.filter(r => r.conditions.every(c => FIELDS[c.field]) && FIELDS[r.sort.field])
+      // 名次數量缺漏或異常時補預設值，避免畫面出現「前 undefined 名」
+      .map(r => ({ ...r, limit: Math.max(1, Math.min(100, parseInt(r.limit) || 10)) })),
     watchlist: [...new Set(rawWatch)].filter(c => validCodes.has(c)),
   };
 }
