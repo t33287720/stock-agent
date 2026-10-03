@@ -276,7 +276,7 @@ function renderWatch() {
       <li class="stock gone">
         <div class="stock-main">
           <div class="stock-name"><b>${esc(code)}</b> <span class="muted">已無資料</span></div>
-          <button type="button" class="ghost danger" onclick="toggleWatch('${esc(code)}')">移除</button>
+          <button type="button" class="ghost danger" onclick="toggleWatch('${esc(code)}')" aria-label="從自選移除 ${esc(code)}">移除</button>
         </div>
       </li>`;
   }).join('');
@@ -295,8 +295,8 @@ function renderRules() {
   el.innerHTML = toolbar + (rules.length
     ? rules.map((r, i) => ruleCard(r, { actions: `
         <div class="actions">
-          <button class="ghost" onclick="openEditor(${i})">編輯</button>
-          <button class="ghost danger" onclick="deleteRule(${i})">刪除</button>
+          <button class="ghost" onclick="openEditor(${i})" aria-label="編輯規則 ${esc(r.name)}">編輯</button>
+          <button class="ghost danger" onclick="deleteRule(${i})" aria-label="刪除規則 ${esc(r.name)}">刪除</button>
         </div>` })).join('')
     : '<p class="muted empty">還沒有自訂規則。按「新增規則」，或到「今日推薦」把現成的規則複製過來再修改。</p>');
 }
@@ -364,12 +364,12 @@ function openEditor(index) {
       <button type="button" class="ghost" onclick="document.getElementById('e-conds').insertAdjacentHTML('beforeend', conditionRow())">＋ 加一個條件</button>
       <div class="label">排名方式</div>
       <div class="cond">
-        <select id="e-sort">${fieldOptions(rule.sort.field, f => !f.bool)}</select>
-        <select id="e-dir">
+        <select id="e-sort" aria-label="排名依據">${fieldOptions(rule.sort.field, f => !f.bool)}</select>
+        <select id="e-dir" aria-label="排序方向">
           <option value="desc" ${rule.sort.dir === 'desc' ? 'selected' : ''}>由高到低</option>
           <option value="asc" ${rule.sort.dir === 'asc' ? 'selected' : ''}>由低到高</option>
         </select>
-        <label class="inline">前<input id="e-limit" type="number" min="1" max="100" value="${rule.limit}">名</label>
+        <label class="inline">前<input id="e-limit" aria-label="顯示名次數量" type="number" min="1" max="100" value="${rule.limit}">名</label>
       </div>
       <div class="toolbar end">
         <button value="cancel" formnovalidate class="ghost">取消</button>
