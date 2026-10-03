@@ -106,3 +106,8 @@ dialog label.inline { flex-direction: row; align-items: center; gap: 6px; margin
 .cond select { flex: 1; min-width: 0; }
 .cond .c-value { width: 80px; }
 #e-limit { width: 64px; }
+
+/* 自選星號 */
+.stock-name { flex: 1; min-width: 0; }
+button.star { background: transparent; border: 0; padding: 0 6px 0 0; font-size: 20px; line-height: 1; color: var(--muted); }
+button.star[aria-pressed="true"] { color: #f59e0b; }

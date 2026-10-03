@@ -88,12 +88,38 @@ const PRESETS = [
 // ── 狀態 ──────────────────────────────────────────────────────────────────────
 let stocks = [];          // [{code, name, market, close, ...}]
 let rules = loadRules();
+let watchlist = loadWatch();   // 自選股代號陣列
 
 function loadRules() {
   try { return JSON.parse(localStorage.getItem('stock-rules')) || []; } catch { return []; }
 }
 function saveRules() {
   try { localStorage.setItem('stock-rules', JSON.stringify(rules)); } catch { /* 無痕模式等情況存不了 */ }
+}
+
+function loadWatch() {
+  try {
+    const list = JSON.parse(localStorage.getItem('stock-watchlist'));
+    return Array.isArray(list) ? list.filter(c => typeof c === 'string') : [];
+  } catch { return []; }
+}
+function saveWatch() {
+  try { localStorage.setItem('stock-watchlist', JSON.stringify(watchlist)); } catch { /* 無痕模式等情況存不了 */ }
+}
+
+// 匯出 / 匯入格式：{ rules, watchlist }；相容舊版純規則陣列。回傳 null 代表格式不正確
+function parseBackup(text, validCodes) {
+  let data;
+  try { data = JSON.parse(text); } catch { return null; }
+  if (!data || typeof data !== 'object') return null;
+  const rawRules = Array.isArray(data) ? data : data?.rules ?? [];
+  const rawWatch = Array.isArray(data) ? [] : data?.watchlist ?? [];
+  if (!Array.isArray(rawRules) || !Array.isArray(rawWatch)) return null;
+  if (!rawRules.every(r => r && r.name && Array.isArray(r.conditions) && r.sort)) return null;
+  return {
+    rules: rawRules.filter(r => r.conditions.every(c => FIELDS[c.field]) && FIELDS[r.sort.field]),
+    watchlist: [...new Set(rawWatch)].filter(c => validCodes.has(c)),
+  };
 }
 
 // ── 規則邏輯 ──────────────────────────────────────────────────────────────────
@@ -133,13 +159,20 @@ function fmt(field, v) {
 
 const trendClass = v => v > 0 ? 'up' : v < 0 ? 'down' : '';
 
+function starButton(s) {
+  const on = watchlist.includes(s.code);
+  return `<button type="button" class="star" data-code="${esc(s.code)}" aria-pressed="${on}"
+    aria-label="${on ? '從自選移除' : '加入自選'} ${esc(s.name)}">${on ? '★' : '☆'}</button>`;
+}
+
 function stockRow(s, highlightField) {
   const extra = highlightField && !['change_pct', 'close'].includes(highlightField)
     ? `<span class="highlight">${esc(FIELDS[highlightField].label)} ${fmt(highlightField, s[highlightField])}</span>` : '';
   return `
     <li class="stock" data-code="${esc(s.code)}" tabindex="0" aria-expanded="false">
       <div class="stock-main">
-        <div><b>${esc(s.name)}</b> <span class="muted">${esc(s.code)} · ${esc(s.market)}</span></div>
+        ${starButton(s)}
+        <div class="stock-name"><b>${esc(s.name)}</b> <span class="muted">${esc(s.code)} · ${esc(s.market)}</span></div>
         <div class="price">
           <span>${s.close}</span>
           <span class="${trendClass(s.change_pct)}">${s.change_pct > 0 ? '+' : ''}${fmt('change_pct', s.change_pct)}</span>
@@ -169,8 +202,10 @@ function toggleDetail(li) {
   li.setAttribute('aria-expanded', 'true');
 }
 document.addEventListener('click', e => {
+  const star = e.target.closest('button.star');
+  if (star) { toggleWatch(star.dataset.code); return; }
   const li = e.target.closest('li.stock');
-  if (li && !e.target.closest('a')) toggleDetail(li);
+  if (li && li.dataset.code && !e.target.closest('a, button')) toggleDetail(li);
 });
 // 鍵盤操作：焦點在股票列上時，Enter / 空白鍵可展開、收合
 document.addEventListener('keydown', e => {
@@ -179,6 +214,22 @@ document.addEventListener('keydown', e => {
     toggleDetail(e.target);
   }
 });
+
+// 加入 / 移除自選：只局部更新星號，不整頁重繪（避免搜尋框內容消失）
+function toggleWatch(code) {
+  const i = watchlist.indexOf(code);
+  if (i >= 0) watchlist.splice(i, 1); else watchlist.push(code);
+  saveWatch();
+  const on = i < 0;
+  const name = stocks.find(x => x.code === code)?.name ?? code;
+  document.querySelectorAll('button.star').forEach(b => {
+    if (b.dataset.code !== code) return;
+    b.setAttribute('aria-pressed', on);
+    b.setAttribute('aria-label', `${on ? '從自選移除' : '加入自選'} ${name}`);
+    b.textContent = on ? '★' : '☆';
+  });
+  renderWatch();
+}
 
 function ruleCard(rule, { actions = '' } = {}) {
   const hits = applyRule(rule);
@@ -212,6 +263,26 @@ function copyPreset(i) {
   switchTab('rules');
 }
 
+// ── 分頁：自選 ────────────────────────────────────────────────────────────────
+function renderWatch() {
+  const el = document.getElementById('tab-watch');
+  if (!watchlist.length) {
+    el.innerHTML = '<p class="muted empty">還沒有自選股。到任何股票列按「☆」就能收藏。</p>';
+    return;
+  }
+  const rows = watchlist.map(code => {
+    const s = stocks.find(x => x.code === code);
+    return s ? stockRow(s) : `
+      <li class="stock gone">
+        <div class="stock-main">
+          <div class="stock-name"><b>${esc(code)}</b> <span class="muted">已無資料</span></div>
+          <button type="button" class="ghost danger" onclick="toggleWatch('${esc(code)}')">移除</button>
+        </div>
+      </li>`;
+  }).join('');
+  el.innerHTML = `<ol class="list">${rows}</ol>`;
+}
+
 // ── 分頁：我的規則 ────────────────────────────────────────────────────────────
 function renderRules() {
   const el = document.getElementById('tab-rules');
@@ -238,24 +309,28 @@ function deleteRule(i) {
 }
 
 function exportRules() {
-  const text = JSON.stringify(rules);
+  const text = JSON.stringify({ rules, watchlist });
   navigator.clipboard?.writeText(text).then(
-    () => alert('規則已複製，可以貼到記事本保存，或在另一支手機「匯入」。'),
+    () => alert('規則與自選股已複製，可以貼到記事本保存，或在另一支手機「匯入」。'),
     () => prompt('複製下面這段文字保存：', text));
 }
 
 function importRules() {
-  const text = prompt('貼上之前匯出的規則：');
+  const text = prompt('貼上之前匯出的內容：');
   if (!text) return;
-  try {
-    const incoming = JSON.parse(text);
-    if (!Array.isArray(incoming) || !incoming.every(r => r.name && Array.isArray(r.conditions) && r.sort)) throw 0;
-    rules.push(...incoming.filter(r => r.conditions.every(c => FIELDS[c.field]) && FIELDS[r.sort.field]));
-    saveRules();
-    renderRules();
-  } catch {
+  const incoming = parseBackup(text, new Set(stocks.map(x => x.code)));
+  if (!incoming) {
     alert('格式不正確，請貼上從「匯出」複製的文字。');
+    return;
   }
+  rules.push(...incoming.rules);
+  watchlist.push(...incoming.watchlist.filter(c => !watchlist.includes(c)));
+  saveRules();
+  saveWatch();
+  renderRules();
+  renderWatch();
+  renderPicks();
+  renderAll();
 }
 
 // ── 規則編輯器 ────────────────────────────────────────────────────────────────
@@ -376,6 +451,7 @@ async function init() {
     return;
   }
   renderPicks();
+  renderWatch();
   renderRules();
   renderAll();
 }
