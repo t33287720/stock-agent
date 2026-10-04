@@ -417,9 +417,11 @@ function renderAll() {
   const input = el.querySelector('#search');
   const show = () => {
     const q = input.value.trim();
-    const hits = q ? stocks.filter(s => s.code.includes(q) || s.name.includes(q)).slice(0, 50) : [];
-    el.querySelector('#search-results').innerHTML = hits.map(s => stockRow(s)).join('')
-      || (q ? '<p class="muted empty">找不到</p>' : `<p class="muted empty">共 ${stocks.length} 支上市櫃股票</p>`);
+    const all = q ? stocks.filter(s => s.code.includes(q) || s.name.includes(q)) : [];
+    const hits = all.slice(0, 50);
+    const more = all.length > hits.length ? `<p class="muted empty">共 ${all.length} 筆，僅顯示前 ${hits.length} 筆，請輸入更完整的關鍵字</p>` : '';
+    el.querySelector('#search-results').innerHTML = hits.map(s => stockRow(s)).join('') + more
+      || (q ? `<p class="muted empty">找不到「${esc(q)}」</p>` : `<p class="muted empty">共 ${stocks.length} 支上市櫃股票</p>`);
   };
   input.addEventListener('input', show);
   show();
