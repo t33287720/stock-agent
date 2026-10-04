@@ -311,6 +311,10 @@ function deleteRule(i) {
 }
 
 function exportRules() {
+  if (!rules.length && !watchlist.length) {
+    alert('目前沒有規則或自選股可以匯出。');
+    return;
+  }
   const text = JSON.stringify({ rules, watchlist });
   navigator.clipboard?.writeText(text).then(
     () => alert('規則與自選股已複製，可以貼到記事本保存，或在另一支手機「匯入」。'),
