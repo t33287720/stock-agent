@@ -325,14 +325,16 @@ function importRules() {
     alert('格式不正確，請貼上從「匯出」複製的文字。');
     return;
   }
+  const newWatch = incoming.watchlist.filter(c => !watchlist.includes(c));
   rules.push(...incoming.rules);
-  watchlist.push(...incoming.watchlist.filter(c => !watchlist.includes(c)));
+  watchlist.push(...newWatch);
   saveRules();
   saveWatch();
   renderRules();
   renderWatch();
   renderPicks();
   renderAll();
+  alert(`匯入完成：${incoming.rules.length} 條規則、${newWatch.length} 檔新自選股。`);
 }
 
 // ── 規則編輯器 ────────────────────────────────────────────────────────────────
