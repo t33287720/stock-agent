@@ -67,6 +67,10 @@ h2 { font-size: 16px; margin: 0 0 2px; }
   margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); font-size: 13px;
 }
 .detail > div { display: flex; justify-content: space-between; gap: 8px; }
+.detail .spark { grid-column: 1 / -1; width: 100%; height: 64px; }
+.spark polyline { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
+.spark line { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.spark-legend { grid-column: 1 / -1; font-size: 12px; }
 .detail a { grid-column: 1 / -1; color: var(--accent); margin-top: 6px; }
 
 button {

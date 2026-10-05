@@ -54,3 +54,23 @@ def test_latest_indicators_skips_stocks_without_trade_today():
     out = indicators.latest_indicators(pd.DataFrame(rows))
     assert list(out["code"]) == ["2330"]
     assert out.iloc[0]["close"] == 10 + len(days) - 1
+
+
+def _history(code, n_days):
+    days = pd.bdate_range("2026-06-01", periods=n_days).strftime("%Y-%m-%d")
+    return [{"date": day, "code": code, "name": code, "market": "上市", "open": 10 + i, "high": 11 + i,
+             "low": 9 + i, "close": 10 + i + 0.123, "volume": 1000 * (i + 1)}
+            for i, day in enumerate(days)]
+
+
+def test_spark_is_last_60_closes_rounded():
+    out = indicators.latest_indicators(pd.DataFrame(_history("2330", 80)))
+    spark = out.iloc[0]["spark"]
+    assert len(spark) == 60
+    assert spark[-1] == round(out.iloc[0]["close"], 2)
+    assert spark[0] == round(10 + 20 + 0.123, 2)
+
+
+def test_spark_shorter_when_history_is_short():
+    out = indicators.latest_indicators(pd.DataFrame(_history("2330", 12)))
+    assert len(out.iloc[0]["spark"]) == 12
