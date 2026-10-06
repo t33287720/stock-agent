@@ -111,3 +111,4 @@ dialog label.inline { flex-direction: row; align-items: center; gap: 6px; margin
 .stock-name { flex: 1; min-width: 0; }
 button.star { background: transparent; border: 0; padding: 0 6px 0 0; font-size: 20px; line-height: 1; color: var(--muted); }
 button.star[aria-pressed="true"] { color: #f59e0b; }
+.badge-new { display: inline-block; padding: 0 6px; border-radius: 8px; background: #f59e0b; color: #fff; font-size: 11px; line-height: 18px; vertical-align: middle; }
