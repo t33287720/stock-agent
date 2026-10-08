@@ -117,7 +117,9 @@ function parseBackup(text, validCodes) {
   if (!Array.isArray(rawRules) || !Array.isArray(rawWatch)) return null;
   if (!rawRules.every(r => r && r.name && Array.isArray(r.conditions) && r.sort)) return null;
   return {
-    rules: rawRules.filter(r => r.conditions.every(c => FIELDS[c.field]) && FIELDS[r.sort.field]),
+    rules: rawRules.filter(r => r.conditions.every(c => FIELDS[c.field]) && FIELDS[r.sort.field])
+      // 名次數量缺漏或異常時補預設值，避免畫面出現「前 undefined 名」
+      .map(r => ({ ...r, limit: Math.max(1, Math.min(100, parseInt(r.limit) || 10)) })),
     watchlist: [...new Set(rawWatch)].filter(c => validCodes.has(c)),
   };
 }
@@ -309,6 +311,10 @@ function deleteRule(i) {
 }
 
 function exportRules() {
+  if (!rules.length && !watchlist.length) {
+    alert('目前沒有規則或自選股可以匯出。');
+    return;
+  }
   const text = JSON.stringify({ rules, watchlist });
   navigator.clipboard?.writeText(text).then(
     () => alert('規則與自選股已複製，可以貼到記事本保存，或在另一支手機「匯入」。'),
@@ -323,14 +329,16 @@ function importRules() {
     alert('格式不正確，請貼上從「匯出」複製的文字。');
     return;
   }
+  const newWatch = incoming.watchlist.filter(c => !watchlist.includes(c));
   rules.push(...incoming.rules);
-  watchlist.push(...incoming.watchlist.filter(c => !watchlist.includes(c)));
+  watchlist.push(...newWatch);
   saveRules();
   saveWatch();
   renderRules();
   renderWatch();
   renderPicks();
   renderAll();
+  alert(`匯入完成：${incoming.rules.length} 條規則、${newWatch.length} 檔新自選股。`);
 }
 
 // ── 規則編輯器 ────────────────────────────────────────────────────────────────
@@ -415,9 +423,11 @@ function renderAll() {
   const input = el.querySelector('#search');
   const show = () => {
     const q = input.value.trim();
-    const hits = q ? stocks.filter(s => s.code.includes(q) || s.name.includes(q)).slice(0, 50) : [];
-    el.querySelector('#search-results').innerHTML = hits.map(s => stockRow(s)).join('')
-      || (q ? '<p class="muted empty">找不到</p>' : `<p class="muted empty">共 ${stocks.length} 支上市櫃股票</p>`);
+    const all = q ? stocks.filter(s => s.code.includes(q) || s.name.includes(q)) : [];
+    const hits = all.slice(0, 50);
+    const more = all.length > hits.length ? `<p class="muted empty">共 ${all.length} 筆，僅顯示前 ${hits.length} 筆，請輸入更完整的關鍵字</p>` : '';
+    el.querySelector('#search-results').innerHTML = hits.map(s => stockRow(s)).join('') + more
+      || (q ? `<p class="muted empty">找不到「${esc(q)}」</p>` : `<p class="muted empty">共 ${stocks.length} 支上市櫃股票</p>`);
   };
   input.addEventListener('input', show);
   show();
