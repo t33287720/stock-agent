@@ -6,6 +6,8 @@
 import numpy as np
 import pandas as pd
 
+SPARK_DAYS = 60  # 個股迷你走勢圖收盤價天數
+
 
 def _kd(high: pd.Series, low: pd.Series, close: pd.Series) -> tuple[np.ndarray, np.ndarray]:
     """台股慣用 KD：9 日 RSV，K = 2/3 前K + 1/3 RSV，D = 2/3 前D + 1/3 K，起始值 50。"""
@@ -65,6 +67,7 @@ def _one_stock(s: pd.DataFrame) -> dict:
         "macd_hist":    (dif - dea).iloc[-1] if n >= 35 else None,
         "macd_cross":   bool(dif.iloc[-1] > dea.iloc[-1] and dif.iloc[-2] <= dea.iloc[-2]) if n >= 35 else None,
         "from_high_60": (last / high.iloc[-60:].max() - 1) * 100 if n >= 60 else None,
+        "spark":        [round(float(v), 2) for v in close.iloc[-SPARK_DAYS:]],
     }
 
 

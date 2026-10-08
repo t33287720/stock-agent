@@ -184,10 +184,30 @@ function stockRow(s, highlightField) {
     </li>`;
 }
 
+// 近 N 日收盤價迷你走勢圖（inline SVG）；漲紅跌綠沿用 .up / .down，虛線為目前的月線／季線
+function sparkline(values, ma20, ma60) {
+  if (!Array.isArray(values) || values.length < 2) return '';
+  const W = 280, H = 64, P = 4;
+  const refs = [[ma20, 'ma20'], [ma60, 'ma60']].filter(([v]) => typeof v === 'number');
+  const all = values.concat(refs.map(([v]) => v));
+  const min = Math.min(...all), max = Math.max(...all), span = max - min || 1;
+  const y = v => (H - P - (v - min) / span * (H - 2 * P)).toFixed(1);
+  const x = i => (P + i / (values.length - 1) * (W - 2 * P)).toFixed(1);
+  const line = values.map((v, i) => `${x(i)},${y(v)}`).join(' ');
+  const lines = refs.map(([v, cls]) =>
+    `<line class="${cls}" x1="${P}" x2="${W - P}" y1="${y(v)}" y2="${y(v)}"/>`).join('');
+  const cls = trendClass(values[values.length - 1] - values[0]);
+  const label = `近 ${values.length} 日收盤價走勢，由 ${values[0]} 到 ${values[values.length - 1]} 元`;
+  return `<svg class="spark ${cls}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${label}">${lines}
+    <polyline points="${line}"/></svg>`;
+}
+
 function stockDetail(s) {
   const cells = Object.keys(FIELDS).map(f =>
     `<div><span class="muted">${esc(FIELDS[f].label)}</span><span>${fmt(f, s[f])}</span></div>`).join('');
-  return `<div class="detail">${cells}
+  const chart = sparkline(s.spark, s.ma20, s.ma60);
+  const legend = chart ? '<span class="muted spark-legend">近 60 日收盤 · 虛線：月線／季線</span>' : '';
+  return `<div class="detail">${chart}${legend}${cells}
     <a href="https://tw.stock.yahoo.com/quote/${encodeURIComponent(s.code)}" target="_blank" rel="noopener">在 Yahoo 股市看走勢圖 ↗</a></div>`;
 }
 
