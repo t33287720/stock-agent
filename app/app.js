@@ -140,7 +140,9 @@ function parseBackup(text, validCodes) {
   if (!Array.isArray(rawRules) || !Array.isArray(rawWatch)) return null;
   if (!rawRules.every(r => r && r.name && Array.isArray(r.conditions) && r.sort)) return null;
   return {
-    rules: rawRules.filter(r => r.conditions.every(c => FIELDS[c.field]) && FIELDS[r.sort.field]),
+    rules: rawRules.filter(r => r.conditions.every(c => FIELDS[c.field]) && FIELDS[r.sort.field])
+      // 名次數量缺漏或異常時補預設值，避免畫面出現「前 undefined 名」
+      .map(r => ({ ...r, limit: Math.max(1, Math.min(100, parseInt(r.limit) || 10)) })),
     watchlist: [...new Set(rawWatch)].filter(c => validCodes.has(c)),
   };
 }
@@ -205,10 +207,30 @@ function stockRow(s, highlightField, isNew = false) {
     </li>`;
 }
 
+// 近 N 日收盤價迷你走勢圖（inline SVG）；漲紅跌綠沿用 .up / .down，虛線為目前的月線／季線
+function sparkline(values, ma20, ma60) {
+  if (!Array.isArray(values) || values.length < 2) return '';
+  const W = 280, H = 64, P = 4;
+  const refs = [[ma20, 'ma20'], [ma60, 'ma60']].filter(([v]) => typeof v === 'number');
+  const all = values.concat(refs.map(([v]) => v));
+  const min = Math.min(...all), max = Math.max(...all), span = max - min || 1;
+  const y = v => (H - P - (v - min) / span * (H - 2 * P)).toFixed(1);
+  const x = i => (P + i / (values.length - 1) * (W - 2 * P)).toFixed(1);
+  const line = values.map((v, i) => `${x(i)},${y(v)}`).join(' ');
+  const lines = refs.map(([v, cls]) =>
+    `<line class="${cls}" x1="${P}" x2="${W - P}" y1="${y(v)}" y2="${y(v)}"/>`).join('');
+  const cls = trendClass(values[values.length - 1] - values[0]);
+  const label = `近 ${values.length} 日收盤價走勢，由 ${values[0]} 到 ${values[values.length - 1]} 元`;
+  return `<svg class="spark ${cls}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${label}">${lines}
+    <polyline points="${line}"/></svg>`;
+}
+
 function stockDetail(s) {
   const cells = Object.keys(FIELDS).map(f =>
     `<div><span class="muted">${esc(FIELDS[f].label)}</span><span>${fmt(f, s[f])}</span></div>`).join('');
-  return `<div class="detail">${cells}
+  const chart = sparkline(s.spark, s.ma20, s.ma60);
+  const legend = chart ? '<span class="muted spark-legend">近 60 日收盤 · 虛線：月線／季線</span>' : '';
+  return `<div class="detail">${chart}${legend}${cells}
     <a href="https://tw.stock.yahoo.com/quote/${encodeURIComponent(s.code)}" target="_blank" rel="noopener">在 Yahoo 股市看走勢圖 ↗</a></div>`;
 }
 
@@ -333,6 +355,10 @@ function deleteRule(i) {
 }
 
 function exportRules() {
+  if (!rules.length && !watchlist.length) {
+    alert('目前沒有規則或自選股可以匯出。');
+    return;
+  }
   const text = JSON.stringify({ rules, watchlist });
   navigator.clipboard?.writeText(text).then(
     () => alert('規則與自選股已複製，可以貼到記事本保存，或在另一支手機「匯入」。'),
@@ -347,14 +373,16 @@ function importRules() {
     alert('格式不正確，請貼上從「匯出」複製的文字。');
     return;
   }
+  const newWatch = incoming.watchlist.filter(c => !watchlist.includes(c));
   rules.push(...incoming.rules);
-  watchlist.push(...incoming.watchlist.filter(c => !watchlist.includes(c)));
+  watchlist.push(...newWatch);
   saveRules();
   saveWatch();
   renderRules();
   renderWatch();
   renderPicks();
   renderAll();
+  alert(`匯入完成：${incoming.rules.length} 條規則、${newWatch.length} 檔新自選股。`);
 }
 
 // ── 規則編輯器 ────────────────────────────────────────────────────────────────
@@ -439,9 +467,11 @@ function renderAll() {
   const input = el.querySelector('#search');
   const show = () => {
     const q = input.value.trim();
-    const hits = q ? stocks.filter(s => s.code.includes(q) || s.name.includes(q)).slice(0, 50) : [];
-    el.querySelector('#search-results').innerHTML = hits.map(s => stockRow(s)).join('')
-      || (q ? '<p class="muted empty">找不到</p>' : `<p class="muted empty">共 ${stocks.length} 支上市櫃股票</p>`);
+    const all = q ? stocks.filter(s => s.code.includes(q) || s.name.includes(q)) : [];
+    const hits = all.slice(0, 50);
+    const more = all.length > hits.length ? `<p class="muted empty">共 ${all.length} 筆，僅顯示前 ${hits.length} 筆，請輸入更完整的關鍵字</p>` : '';
+    el.querySelector('#search-results').innerHTML = hits.map(s => stockRow(s)).join('') + more
+      || (q ? `<p class="muted empty">找不到「${esc(q)}」</p>` : `<p class="muted empty">共 ${stocks.length} 支上市櫃股票</p>`);
   };
   input.addEventListener('input', show);
   show();
