@@ -87,6 +87,7 @@ const PRESETS = [
 
 // ── 狀態 ──────────────────────────────────────────────────────────────────────
 let stocks = [];          // [{code, name, market, close, ...}]
+let dataDate = '';        // 資料日期（YYYY-MM-DD）
 let rules = loadRules();
 let watchlist = loadWatch();   // 自選股代號陣列
 
@@ -105,6 +106,28 @@ function loadWatch() {
 }
 function saveWatch() {
   try { localStorage.setItem('stock-watchlist', JSON.stringify(watchlist)); } catch { /* 無痕模式等情況存不了 */ }
+}
+
+// 「新進榜」比較基準：每個規則記住最近一個資料日期的名單，以及更早一次的名單。
+// 同一個資料日期重複開啟不會覆寫比較基準；沒有基準（第一次、清除資料）就不標示。
+function newEntryCodes(rule, hits) {
+  const key = `stock-seen:${rule.name}`;
+  const codes = hits.map(s => s.code);
+  let prev = null;
+  try {
+    const saved = JSON.parse(localStorage.getItem(key));
+    if (saved && saved.date && Array.isArray(saved.codes)) {
+      if (dataDate && saved.date < dataDate) {
+        prev = saved.codes;
+        localStorage.setItem(key, JSON.stringify({ date: dataDate, codes, prev }));
+      } else {
+        prev = Array.isArray(saved.prev) ? saved.prev : null;
+      }
+    } else if (dataDate) {
+      localStorage.setItem(key, JSON.stringify({ date: dataDate, codes, prev: null }));
+    }
+  } catch { /* 無痕模式等情況存不了，就不標示 */ }
+  return new Set(prev ? codes.filter(c => !prev.includes(c)) : []);
 }
 
 // 匯出 / 匯入格式：{ rules, watchlist }；相容舊版純規則陣列。回傳 null 代表格式不正確
@@ -167,14 +190,14 @@ function starButton(s) {
     aria-label="${on ? '從自選移除' : '加入自選'} ${esc(s.name)}">${on ? '★' : '☆'}</button>`;
 }
 
-function stockRow(s, highlightField) {
+function stockRow(s, highlightField, isNew = false) {
   const extra = highlightField && !['change_pct', 'close'].includes(highlightField)
     ? `<span class="highlight">${esc(FIELDS[highlightField].label)} ${fmt(highlightField, s[highlightField])}</span>` : '';
   return `
     <li class="stock" data-code="${esc(s.code)}" tabindex="0" aria-expanded="false">
       <div class="stock-main">
         ${starButton(s)}
-        <div class="stock-name"><b>${esc(s.name)}</b> <span class="muted">${esc(s.code)} · ${esc(s.market)}</span></div>
+        <div class="stock-name"><b>${esc(s.name)}</b> <span class="muted">${esc(s.code)} · ${esc(s.market)}</span>${isNew ? ' <span class="badge-new" aria-label="新進榜">新進榜</span>' : ''}</div>
         <div class="price">
           <span>${s.close}</span>
           <span class="${trendClass(s.change_pct)}">${s.change_pct > 0 ? '+' : ''}${fmt('change_pct', s.change_pct)}</span>
@@ -255,6 +278,7 @@ function toggleWatch(code) {
 
 function ruleCard(rule, { actions = '' } = {}) {
   const hits = applyRule(rule);
+  const fresh = newEntryCodes(rule, hits);
   return `
     <article class="card">
       <div class="card-head">
@@ -265,7 +289,7 @@ function ruleCard(rule, { actions = '' } = {}) {
         </div>
         ${actions}
       </div>
-      ${hits.length ? `<ol class="list">${hits.map(s => stockRow(s, rule.sort.field)).join('')}</ol>`
+      ${hits.length ? `<ol class="list">${hits.map(s => stockRow(s, rule.sort.field, fresh.has(s.code))).join('')}</ol>`
                     : '<p class="muted empty">今天沒有符合條件的股票</p>'}
     </article>`;
 }
@@ -471,6 +495,7 @@ async function init() {
     const resp = await fetch('stocks-latest.json', { cache: 'no-cache' });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
+    dataDate = data.date;
     stocks = data.rows.map(r => Object.fromEntries(data.columns.map((c, i) => [c, r[i]])));
     document.getElementById('data-date').textContent =
       `${data.date} 收盤資料 · ${stocks.length} 支${data.has_valuation ? '' : ' · 本益比等估值尚未公布'}`;
