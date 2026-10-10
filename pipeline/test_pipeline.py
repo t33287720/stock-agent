@@ -74,3 +74,17 @@ def test_spark_is_last_60_closes_rounded():
 def test_spark_shorter_when_history_is_short():
     out = indicators.latest_indicators(pd.DataFrame(_history("2330", 12)))
     assert len(out.iloc[0]["spark"]) == 12
+
+
+def test_vols_align_with_spark_in_lots():
+    """回測用的成交量序列要和 spark 同長度、單位為張（股數 ÷ 1000）。"""
+    out = indicators.latest_indicators(pd.DataFrame(_history("2330", 80)))
+    row = out.iloc[0]
+    assert len(row["vols"]) == len(row["spark"]) == 60
+    assert row["vols"][-1] == 80          # 最後一天成交 80,000 股 = 80 張
+    assert row["vols"][-1] == round(row["lots"])
+
+
+def test_vols_shorter_when_history_is_short():
+    out = indicators.latest_indicators(pd.DataFrame(_history("2330", 12)))
+    assert len(out.iloc[0]["vols"]) == 12
