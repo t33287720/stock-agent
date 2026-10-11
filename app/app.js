@@ -335,12 +335,30 @@ function sparkline(values, ma20, ma60) {
     <polyline points="${line}"/></svg>`;
 }
 
+// 近 20 日成交量柱狀圖（inline SVG）；最後一根（今日）用強調色，量比 > 1.5 以醒目顏色標示
+function volumeBars(vols) {
+  if (!Array.isArray(vols) || vols.length < 2) return '';
+  const v = vols.slice(-20);
+  const W = 280, H = 40, G = 2;
+  const max = Math.max(...v) || 1;
+  const bw = (W - G * (v.length - 1)) / v.length;
+  const bars = v.map((n, i) => {
+    const h = Math.max(1, n / max * H);
+    return `<rect class="${i === v.length - 1 ? 'today' : ''}" x="${(i * (bw + G)).toFixed(1)}" y="${(H - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}"/>`;
+  }).join('');
+  return `<svg class="volbars" viewBox="0 0 ${W} ${H}" role="img" aria-label="近 ${v.length} 日成交量，今日 ${v[v.length - 1]} 張">${bars}</svg>`;
+}
+
 function stockDetail(s) {
   const cells = Object.keys(FIELDS).map(f =>
     `<div><span class="muted">${esc(FIELDS[f].label)}</span><span>${fmt(f, s[f])}</span></div>`).join('');
   const chart = sparkline(s.spark, s.ma20, s.ma60);
   const legend = chart ? '<span class="muted spark-legend">近 60 日收盤 · 虛線：月線／季線</span>' : '';
-  return `<div class="detail">${chart}${legend}${cells}
+  const vchart = volumeBars(s.vols);
+  const ratio = typeof s.vol_ratio === 'number'
+    ? `量比 <b class="${s.vol_ratio > 1.5 ? 'vol-hot' : ''}">${s.vol_ratio.toFixed(2)}</b> 倍` : '量比 —';
+  const vlegend = vchart ? `<span class="muted spark-legend">近 20 日成交量（張）· 最右為今日 · ${ratio}</span>` : '';
+  return `<div class="detail">${chart}${legend}${vchart}${vlegend}${cells}
     <a href="https://tw.stock.yahoo.com/quote/${encodeURIComponent(s.code)}" target="_blank" rel="noopener">在 Yahoo 股市看走勢圖 ↗</a></div>`;
 }
 

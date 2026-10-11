@@ -88,3 +88,11 @@ def test_vols_align_with_spark_in_lots():
 def test_vols_shorter_when_history_is_short():
     out = indicators.latest_indicators(pd.DataFrame(_history("2330", 12)))
     assert len(out.iloc[0]["vols"]) == 12
+
+
+def test_vol_ratio_is_today_over_prev_5_day_mean():
+    """量比 = 今日量 ÷ 前 5 日平均量；歷史不足 6 天時為缺值。"""
+    row = indicators.latest_indicators(pd.DataFrame(_history("2330", 80))).iloc[0]
+    assert abs(row["vol_ratio"] - 80 / 77) < 1e-9   # 前 5 日 75..79 張，平均 77
+    short = indicators.latest_indicators(pd.DataFrame(_history("2330", 5))).iloc[0]
+    assert pd.isna(short["vol_ratio"])
