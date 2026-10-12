@@ -74,3 +74,25 @@ def test_spark_is_last_60_closes_rounded():
 def test_spark_shorter_when_history_is_short():
     out = indicators.latest_indicators(pd.DataFrame(_history("2330", 12)))
     assert len(out.iloc[0]["spark"]) == 12
+
+
+def test_vols_align_with_spark_in_lots():
+    """回測用的成交量序列要和 spark 同長度、單位為張（股數 ÷ 1000）。"""
+    out = indicators.latest_indicators(pd.DataFrame(_history("2330", 80)))
+    row = out.iloc[0]
+    assert len(row["vols"]) == len(row["spark"]) == 60
+    assert row["vols"][-1] == 80          # 最後一天成交 80,000 股 = 80 張
+    assert row["vols"][-1] == round(row["lots"])
+
+
+def test_vols_shorter_when_history_is_short():
+    out = indicators.latest_indicators(pd.DataFrame(_history("2330", 12)))
+    assert len(out.iloc[0]["vols"]) == 12
+
+
+def test_vol_ratio_is_today_over_prev_5_day_mean():
+    """量比 = 今日量 ÷ 前 5 日平均量；歷史不足 6 天時為缺值。"""
+    row = indicators.latest_indicators(pd.DataFrame(_history("2330", 80))).iloc[0]
+    assert abs(row["vol_ratio"] - 80 / 77) < 1e-9   # 前 5 日 75..79 張，平均 77
+    short = indicators.latest_indicators(pd.DataFrame(_history("2330", 5))).iloc[0]
+    assert pd.isna(short["vol_ratio"])

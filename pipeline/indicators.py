@@ -6,7 +6,7 @@
 import numpy as np
 import pandas as pd
 
-SPARK_DAYS = 60  # 個股迷你走勢圖收盤價天數
+SPARK_DAYS = 60  # 個股迷你走勢圖收盤價天數（也是 App 規則回測可用的天數）
 
 
 def _kd(high: pd.Series, low: pd.Series, close: pd.Series) -> tuple[np.ndarray, np.ndarray]:
@@ -68,6 +68,8 @@ def _one_stock(s: pd.DataFrame) -> dict:
         "macd_cross":   bool(dif.iloc[-1] > dea.iloc[-1] and dif.iloc[-2] <= dea.iloc[-2]) if n >= 35 else None,
         "from_high_60": (last / high.iloc[-60:].max() - 1) * 100 if n >= 60 else None,
         "spark":        [round(float(v), 2) for v in close.iloc[-SPARK_DAYS:]],
+        # 與 spark 同長度、同日期的成交量（張，取整數），給 App 回測成交量條件用
+        "vols":         [int(round(v / 1000)) for v in vol.iloc[-SPARK_DAYS:]],
     }
 
 

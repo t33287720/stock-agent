@@ -165,6 +165,116 @@ function applyRule(rule) {
     .slice(0, rule.limit);
 }
 
+// ── 規則回測 ──────────────────────────────────────────────────────────────────
+// 只用 JSON 裡每支股票近 60 日的收盤（spark）與成交量（vols）重算各天指標，
+// 對過去每一天套用同一條規則，看選出的股票隔 1／5／10 日的平均漲跌與勝率。
+// 需要最高／最低價、估值或超過 60 日資料的條件算不出來，回測時略過（畫面會標示）。
+const BT_SKIP = new Set(['k', 'd', 'kd_cross', 'pe', 'pb', 'yield', 'ma60', 'above_ma60', 'from_high_60']);
+const BT_HORIZONS = [1, 5, 10];
+
+// 逐日指標序列（與 pipeline/indicators.py 同公式；只有 60 日起算，RSI／MACD 與正式值略有差異）
+function btSeries(s) {
+  const c = s.spark, v = s.vols;
+  if (!Array.isArray(c) || !Array.isArray(v) || c.length !== v.length || c.length < 2) return null;
+  const n = c.length;
+  const mean = (arr, end, len) => end + 1 >= len ? arr.slice(end + 1 - len, end + 1).reduce((a, b) => a + b, 0) / len : null;
+  const ewm = (vals, span, from = 0) => {
+    const a = 2 / (span + 1), out = Array(n).fill(null);
+    for (let i = from; i < n; i++) out[i] = i === from ? vals[i] : out[i - 1] * (1 - a) + vals[i] * a;
+    return out;
+  };
+  const e12 = ewm(c, 12), e26 = ewm(c, 26);
+  const dif = c.map((_, i) => e12[i] - e26[i]), dea = ewm(dif, 9);
+  let gain = 0, loss = 0;
+  const rsi = c.map((x, i) => {
+    if (i === 0) return null;
+    const d = x - c[i - 1], a = 1 / 14;
+    gain = i === 1 ? Math.max(d, 0) : gain * (1 - a) + Math.max(d, 0) * a;
+    loss = i === 1 ? Math.max(-d, 0) : loss * (1 - a) + Math.max(-d, 0) * a;
+    return i >= 14 && loss > 0 ? 100 - 100 / (1 + gain / loss) : null;
+  });
+  const ret = (i, days) => i >= days ? (c[i] / c[i - days] - 1) * 100 : null;
+  const at = i => {
+    const prev5 = i >= 5 ? mean(v, i - 1, 5) : null, ma20 = mean(c, i, 20);
+    return {
+      close: c[i], change_pct: ret(i, 1), ret_5d: ret(i, 5), ret_20d: ret(i, 20),
+      lots: v[i], avg_lots_20: mean(v, i, 20), vol_ratio: prev5 ? v[i] / prev5 : null,
+      rsi: rsi[i], ma5: mean(c, i, 5), ma20, above_ma20: ma20 === null ? null : c[i] > ma20,
+      macd_hist: i >= 34 ? dif[i] - dea[i] : null,
+      macd_cross: i >= 34 ? dif[i] > dea[i] && dif[i - 1] <= dea[i - 1] : null,
+    };
+  };
+  return { n, close: c, at };
+}
+
+function backtestRule(rule) {
+  if (BT_SKIP.has(rule.sort.field)) return { error: `排名依據「${FIELDS[rule.sort.field].label}」無法用近 60 日資料回測。` };
+  const conds = rule.conditions.filter(c => !BT_SKIP.has(c.field));
+  const skipped = rule.conditions.filter(c => BT_SKIP.has(c.field));
+  const series = stocks.map(s => s._bt ??= btSeries(s) ?? false).filter(Boolean);
+  const maxN = Math.max(0, ...series.map(x => x.n));
+  const stat = Object.fromEntries(BT_HORIZONS.map(h => [h, { sum: 0, win: 0, n: 0, mSum: 0, mN: 0 }]));
+  const { field, dir } = rule.sort;
+  let days = 0, picks = 0;
+  for (let back = 1; back < maxN; back++) {     // back：往前推幾個交易日（以最新一天為 0）
+    const rows = [];
+    for (const ser of series) {
+      const i = ser.n - 1 - back;
+      if (i < 0) continue;
+      const row = ser.at(i);
+      if (row[field] != null && conds.every(c => passes(row, c))) rows.push({ ser, i, v: row[field] });
+    }
+    rows.sort((a, b) => dir === 'asc' ? a.v - b.v : b.v - a.v);
+    const hits = rows.slice(0, rule.limit);
+    if (!hits.length) continue;
+    days++; picks += hits.length;
+    for (const h of BT_HORIZONS) {
+      if (back < h) continue;
+      const st = stat[h];
+      for (const { ser, i } of hits) {
+        const r = (ser.close[i + h] / ser.close[i] - 1) * 100;
+        st.sum += r; st.n++; if (r > 0) st.win++;
+      }
+      for (const ser of series) {
+        const i = ser.n - 1 - back;
+        if (i >= 0) { st.mSum += (ser.close[i + h] / ser.close[i] - 1) * 100; st.mN++; }
+      }
+    }
+  }
+  return { days, picks, skipped, stat, span: maxN };
+}
+
+function backtestHtml(res) {
+  if (res.error) return `<p class="muted small">${esc(res.error)}</p>`;
+  const pct = v => v === null ? '—' : `<span class="${trendClass(v)}">${v > 0 ? '+' : ''}${v.toFixed(2)}%</span>`;
+  const cell = (h, f) => { const st = res.stat[h]; return st.n ? f(st) : null; };
+  const row = (label, f) => `<tr><th scope="row">${label}</th>${BT_HORIZONS.map(h => `<td>${f(h)}</td>`).join('')}</tr>`;
+  const skipNote = res.skipped.length
+    ? `<p class="muted small">以下條件需要近 60 日以外的資料，回測時已略過：${esc(res.skipped.map(describeCondition).join('、'))}</p>` : '';
+  if (!res.days) return `<p class="muted small">近 ${res.span} 個交易日內，這條規則沒有選出任何股票（或資料天數不足以計算條件）。</p>${skipNote}`;
+  return `
+    <p class="small">過去 ${res.days} 天有選出股票，共 ${res.picks} 檔次；持有後的表現：</p>
+    <table class="bt-table">
+      <thead><tr><th></th>${BT_HORIZONS.map(h => `<th scope="col">隔 ${h} 日</th>`).join('')}</tr></thead>
+      <tbody>
+        ${row('命中股平均', h => pct(cell(h, st => st.sum / st.n)))}
+        ${row('勝率', h => cell(h, st => `${(st.win / st.n * 100).toFixed(0)}%`) ?? '—')}
+        ${row('全市場平均', h => pct(cell(h, st => st.mSum / st.mN)))}
+        ${row('樣本數', h => res.stat[h].n)}
+      </tbody>
+    </table>
+    ${skipNote}
+    <p class="muted small">⚠️ 只有近 ${res.span} 個交易日、樣本少，參考價值有限；過去績效不代表未來。</p>`;
+}
+
+function toggleBacktest(i, btn) {
+  const card = btn.closest('.card');
+  const open = card.querySelector('.bt');
+  if (open) { open.remove(); btn.setAttribute('aria-expanded', 'false'); return; }
+  card.insertAdjacentHTML('beforeend', `<div class="bt">${backtestHtml(backtestRule(rules[i]))}</div>`);
+  btn.setAttribute('aria-expanded', 'true');
+}
+
 function describeCondition(c) {
   const f = FIELDS[c.field];
   if (f.bool) return c.value ? f.label : `未${f.label}`;
@@ -225,12 +335,30 @@ function sparkline(values, ma20, ma60) {
     <polyline points="${line}"/></svg>`;
 }
 
+// 近 20 日成交量柱狀圖（inline SVG）；最後一根（今日）用強調色，量比 > 1.5 以醒目顏色標示
+function volumeBars(vols) {
+  if (!Array.isArray(vols) || vols.length < 2) return '';
+  const v = vols.slice(-20);
+  const W = 280, H = 40, G = 2;
+  const max = Math.max(...v) || 1;
+  const bw = (W - G * (v.length - 1)) / v.length;
+  const bars = v.map((n, i) => {
+    const h = Math.max(1, n / max * H);
+    return `<rect class="${i === v.length - 1 ? 'today' : ''}" x="${(i * (bw + G)).toFixed(1)}" y="${(H - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}"/>`;
+  }).join('');
+  return `<svg class="volbars" viewBox="0 0 ${W} ${H}" role="img" aria-label="近 ${v.length} 日成交量，今日 ${v[v.length - 1]} 張">${bars}</svg>`;
+}
+
 function stockDetail(s) {
   const cells = Object.keys(FIELDS).map(f =>
     `<div><span class="muted">${esc(FIELDS[f].label)}</span><span>${fmt(f, s[f])}</span></div>`).join('');
   const chart = sparkline(s.spark, s.ma20, s.ma60);
   const legend = chart ? '<span class="muted spark-legend">近 60 日收盤 · 虛線：月線／季線</span>' : '';
-  return `<div class="detail">${chart}${legend}${cells}
+  const vchart = volumeBars(s.vols);
+  const ratio = typeof s.vol_ratio === 'number'
+    ? `量比 <b class="${s.vol_ratio > 1.5 ? 'vol-hot' : ''}">${s.vol_ratio.toFixed(2)}</b> 倍` : '量比 —';
+  const vlegend = vchart ? `<span class="muted spark-legend">近 20 日成交量（張）· 最右為今日 · ${ratio}</span>` : '';
+  return `<div class="detail">${chart}${legend}${vchart}${vlegend}${cells}
     <a href="https://tw.stock.yahoo.com/quote/${encodeURIComponent(s.code)}" target="_blank" rel="noopener">在 Yahoo 股市看走勢圖 ↗</a></div>`;
 }
 
@@ -341,6 +469,7 @@ function renderRules() {
   el.innerHTML = toolbar + (rules.length
     ? rules.map((r, i) => ruleCard(r, { actions: `
         <div class="actions">
+          <button class="ghost" onclick="toggleBacktest(${i}, this)" aria-expanded="false" aria-label="回測規則 ${esc(r.name)}">回測</button>
           <button class="ghost" onclick="openEditor(${i})" aria-label="編輯規則 ${esc(r.name)}">編輯</button>
           <button class="ghost danger" onclick="deleteRule(${i})" aria-label="刪除規則 ${esc(r.name)}">刪除</button>
         </div>` })).join('')
