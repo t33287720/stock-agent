@@ -111,3 +111,10 @@ dialog label.inline { flex-direction: row; align-items: center; gap: 6px; margin
 .stock-name { flex: 1; min-width: 0; }
 button.star { background: transparent; border: 0; padding: 0 6px 0 0; font-size: 20px; line-height: 1; color: var(--muted); }
 button.star[aria-pressed="true"] { color: #f59e0b; }
+
+/* 大盤概況 */
+.breadth { display: flex; height: 10px; border-radius: 99px; overflow: hidden; margin: 8px 0; background: var(--border); }
+.b-up { background: var(--up); }
+.b-flat { background: var(--muted); }
+.b-down { background: var(--down); }
+.market-nums { display: flex; justify-content: space-between; margin-bottom: 4px; font-variant-numeric: tabular-nums; }

@@ -87,6 +87,7 @@ const PRESETS = [
 
 // ── 狀態 ──────────────────────────────────────────────────────────────────────
 let stocks = [];          // [{code, name, market, close, ...}]
+let market = null;   // 大盤概況（舊版 JSON 可能沒有）
 let rules = loadRules();
 let watchlist = loadWatch();   // 自選股代號陣列
 
@@ -249,8 +250,28 @@ function ruleCard(rule, { actions = '' } = {}) {
 }
 
 // ── 分頁：今日推薦 ────────────────────────────────────────────────────────────
+function marketCard(m) {
+  if (!m) return '';   // 舊版 JSON 沒有 market 欄位就不顯示
+  const total = m.up + m.down + m.flat || 1;
+  const pct = n => (n / total * 100).toFixed(1);
+  const amount = m.amount >= 1e8 ? `${(m.amount / 1e8).toLocaleString('zh-TW', { maximumFractionDigits: 0 })} 億` : '—';
+  const ratio = m.amount_ratio ? `（前 5 日均額的 ${m.amount_ratio} 倍）` : '';
+  return `
+    <article class="card market" aria-label="大盤漲跌家數概況">
+      <h2>今日盤勢</h2>
+      <div class="breadth" role="img" aria-label="上漲 ${m.up} 家、下跌 ${m.down} 家、平盤 ${m.flat} 家">
+        <span class="b-up" style="width:${pct(m.up)}%"></span><span class="b-flat" style="width:${pct(m.flat)}%"></span><span class="b-down" style="width:${pct(m.down)}%"></span>
+      </div>
+      <div class="small market-nums">
+        <span class="up">上漲 ${m.up}</span><span class="muted">平盤 ${m.flat}</span><span class="down">下跌 ${m.down}</span>
+      </div>
+      <div class="small muted">漲停約 ${m.limit_up} · 跌停約 ${m.limit_down}（以 ±9.5% 近似）</div>
+      <div class="small muted">成交金額 ${amount}${ratio}</div>
+    </article>`;
+}
+
 function renderPicks() {
-  document.getElementById('tab-picks').innerHTML = PRESETS.map((p, i) =>
+  document.getElementById('tab-picks').innerHTML = marketCard(market) + PRESETS.map((p, i) =>
     ruleCard(p, { actions: `<button class="ghost" onclick="copyPreset(${i})">複製成我的規則</button>` })).join('');
 }
 
@@ -441,6 +462,7 @@ async function init() {
     const resp = await fetch('stocks-latest.json', { cache: 'no-cache' });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
+    market = data.market ?? null;
     stocks = data.rows.map(r => Object.fromEntries(data.columns.map((c, i) => [c, r[i]])));
     document.getElementById('data-date').textContent =
       `${data.date} 收盤資料 · ${stocks.length} 支${data.has_valuation ? '' : ' · 本益比等估值尚未公布'}`;

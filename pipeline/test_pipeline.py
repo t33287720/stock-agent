@@ -54,3 +54,23 @@ def test_latest_indicators_skips_stocks_without_trade_today():
     out = indicators.latest_indicators(pd.DataFrame(rows))
     assert list(out["code"]) == ["2330"]
     assert out.iloc[0]["close"] == 10 + len(days) - 1
+
+
+def test_market_summary_counts_breadth_and_limits():
+    def row(day, code, close, vol=1000):
+        return {"date": day, "code": code, "name": code, "market": "上市", "open": close, "high": close,
+                "low": close, "close": close, "volume": vol}
+    rows = [row("2026-09-01", c, 100) for c in ("A", "B", "C", "D", "E")]
+    rows += [row("2026-09-02", "A", 110), row("2026-09-02", "B", 90), row("2026-09-02", "C", 100),
+             row("2026-09-02", "D", 101), row("2026-09-02", "N", 50)]   # N 新上市、E 停牌
+    m = indicators.market_summary(pd.DataFrame(rows))
+    assert (m["up"], m["down"], m["flat"]) == (2, 1, 1)
+    assert (m["limit_up"], m["limit_down"]) == (1, 1)
+    assert m["amount"] == 110000 + 90000 + 100000 + 101000 + 50000
+    assert m["amount_ratio"] == round(451000 / 500000, 2)
+
+
+def test_market_summary_needs_two_days():
+    df = pd.DataFrame([{"date": "2026-09-01", "code": "A", "name": "A", "market": "上市",
+                        "open": 1, "high": 1, "low": 1, "close": 1, "volume": 1}])
+    assert indicators.market_summary(df) is None
