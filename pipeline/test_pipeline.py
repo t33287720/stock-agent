@@ -74,3 +74,44 @@ def test_market_summary_needs_two_days():
     df = pd.DataFrame([{"date": "2026-09-01", "code": "A", "name": "A", "market": "上市",
                         "open": 1, "high": 1, "low": 1, "close": 1, "volume": 1}])
     assert indicators.market_summary(df) is None
+
+def _history(code, n_days):
+    days = pd.bdate_range("2026-06-01", periods=n_days).strftime("%Y-%m-%d")
+    return [{"date": day, "code": code, "name": code, "market": "上市", "open": 10 + i, "high": 11 + i,
+             "low": 9 + i, "close": 10 + i + 0.123, "volume": 1000 * (i + 1)}
+            for i, day in enumerate(days)]
+
+
+def test_spark_is_last_60_closes_rounded():
+    out = indicators.latest_indicators(pd.DataFrame(_history("2330", 80)))
+    spark = out.iloc[0]["spark"]
+    assert len(spark) == 60
+    assert spark[-1] == round(out.iloc[0]["close"], 2)
+    assert spark[0] == round(10 + 20 + 0.123, 2)
+
+
+def test_spark_shorter_when_history_is_short():
+    out = indicators.latest_indicators(pd.DataFrame(_history("2330", 12)))
+    assert len(out.iloc[0]["spark"]) == 12
+
+
+def test_vols_align_with_spark_in_lots():
+    """回測用的成交量序列要和 spark 同長度、單位為張（股數 ÷ 1000）。"""
+    out = indicators.latest_indicators(pd.DataFrame(_history("2330", 80)))
+    row = out.iloc[0]
+    assert len(row["vols"]) == len(row["spark"]) == 60
+    assert row["vols"][-1] == 80          # 最後一天成交 80,000 股 = 80 張
+    assert row["vols"][-1] == round(row["lots"])
+
+
+def test_vols_shorter_when_history_is_short():
+    out = indicators.latest_indicators(pd.DataFrame(_history("2330", 12)))
+    assert len(out.iloc[0]["vols"]) == 12
+
+
+def test_vol_ratio_is_today_over_prev_5_day_mean():
+    """量比 = 今日量 ÷ 前 5 日平均量；歷史不足 6 天時為缺值。"""
+    row = indicators.latest_indicators(pd.DataFrame(_history("2330", 80))).iloc[0]
+    assert abs(row["vol_ratio"] - 80 / 77) < 1e-9   # 前 5 日 75..79 張，平均 77
+    short = indicators.latest_indicators(pd.DataFrame(_history("2330", 5))).iloc[0]
+    assert pd.isna(short["vol_ratio"])
