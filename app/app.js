@@ -403,6 +403,7 @@ function toggleWatch(code) {
     b.textContent = on ? '★' : '☆';
   });
   renderWatch();
+  renderPicks();
 }
 
 function ruleCard(rule, { actions = '' } = {}) {
@@ -444,8 +445,43 @@ function marketCard(m) {
     </article>`;
 }
 
+// 自選股今日摘要：依漲跌幅排序，標出命中的推薦／自訂規則；預設顯示前 10 檔
+const WATCH_SUMMARY_LIMIT = 10;
+let watchSummaryOpen = true, watchSummaryAll = false;
+
+function watchSummary() {
+  const items = watchlist.map(code => stocks.find(x => x.code === code)).filter(Boolean)
+    .sort((a, b) => (b.change_pct ?? -Infinity) - (a.change_pct ?? -Infinity));
+  if (!items.length) return '';   // 沒有自選股（或都已無資料）就不顯示
+  const tags = new Map();
+  for (const r of [...PRESETS, ...rules]) {
+    for (const s of applyRule(r)) tags.set(s.code, [...(tags.get(s.code) ?? []), r.name]);
+  }
+  const shown = watchSummaryAll ? items : items.slice(0, WATCH_SUMMARY_LIMIT);
+  const li = s => {
+    const hit = tags.get(s.code);
+    const chg = s.change_pct == null ? '—' : `${s.change_pct > 0 ? '+' : ''}${fmt('change_pct', s.change_pct)}`;
+    return `<li class="watch-sum-row">
+      <span><b>${esc(s.name)}</b> <span class="muted small">${esc(s.code)}</span></span>
+      <span class="${trendClass(s.change_pct)}">${chg}</span>
+      ${hit ? `<span class="small muted watch-hit">命中：${hit.map(esc).join('、')}</span>` : ''}</li>`;
+  };
+  const more = items.length > WATCH_SUMMARY_LIMIT
+    ? `<button type="button" class="ghost" onclick="toggleWatchSummaryAll()">${watchSummaryAll ? '收合' : `顯示全部 ${items.length} 檔`}</button>` : '';
+  return `
+    <details class="card watch-sum" ${watchSummaryOpen ? 'open' : ''} ontoggle="watchSummaryOpen = this.open">
+      <summary><h2>我的自選 · 今日</h2></summary>
+      <ol class="list">${shown.map(li).join('')}</ol>${more}
+    </details>`;
+}
+
+function toggleWatchSummaryAll() {
+  watchSummaryAll = !watchSummaryAll;
+  renderPicks();
+}
+
 function renderPicks() {
-  document.getElementById('tab-picks').innerHTML = marketCard(market) + PRESETS.map((p, i) =>
+  document.getElementById('tab-picks').innerHTML = watchSummary() + marketCard(market) + PRESETS.map((p, i) =>
     ruleCard(p, { actions: `<button class="ghost" onclick="copyPreset(${i})">複製成我的規則</button>` })).join('');
 }
 

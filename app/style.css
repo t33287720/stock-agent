@@ -134,3 +134,9 @@ button.star[aria-pressed="true"] { color: #f59e0b; }
 .volbars rect { fill: var(--muted); opacity: .55; }
 .volbars rect.today { fill: currentColor; opacity: 1; }
 .vol-hot { color: #e67e22; }
+
+/* 自選股今日摘要 */
+.watch-sum summary { cursor: pointer; }
+.watch-sum summary h2 { display: inline; }
+.watch-sum-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; padding: 6px 0; border-top: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+.watch-hit { flex-basis: 100%; }
