@@ -91,6 +91,7 @@ let market = null;   // 大盤概況（舊版 JSON 可能沒有）
 let dataDate = '';        // 資料日期（YYYY-MM-DD）
 let rules = loadRules();
 let watchlist = loadWatch();   // 自選股代號陣列
+let holdings = loadHoldings(); // 買進成本 { 代號: {cost, shares} }，欄位皆可留空
 
 function loadRules() {
   try { return JSON.parse(localStorage.getItem('stock-rules')) || []; } catch { return []; }
@@ -107,6 +108,37 @@ function loadWatch() {
 }
 function saveWatch() {
   try { localStorage.setItem('stock-watchlist', JSON.stringify(watchlist)); } catch { /* 無痕模式等情況存不了 */ }
+}
+
+function loadHoldings() {
+  try { return cleanHoldings(JSON.parse(localStorage.getItem('stock-holdings'))); } catch { return {}; }
+}
+function saveHoldings() {
+  try { localStorage.setItem('stock-holdings', JSON.stringify(holdings)); } catch { /* 無痕模式等情況存不了 */ }
+}
+// 只保留格式正確的成本資料（均價 > 0、股數 > 0，至少一項有值）
+function cleanHoldings(h, validCodes) {
+  const out = {};
+  if (!h || typeof h !== 'object' || Array.isArray(h)) return out;
+  for (const [code, v] of Object.entries(h)) {
+    if (validCodes && !validCodes.has(code)) continue;
+    const cost = Number(v?.cost) > 0 ? Number(v.cost) : null;
+    const shares = Number(v?.shares) > 0 ? Number(v.shares) : null;
+    if (cost || shares) out[code] = { cost, shares };
+  }
+  return out;
+}
+// 未實現損益：需要均價才算；有股數才有金額。未含手續費與證交稅
+function holdingPnl(s, h) {
+  if (!h?.cost || s.close == null) return null;
+  const pct = (s.close / h.cost - 1) * 100;
+  const amount = h.shares ? (s.close - h.cost) * h.shares : null;
+  return { pct, amount, cost: h.shares ? h.cost * h.shares : null };
+}
+function pnlText(p) {
+  const sign = v => (v > 0 ? '+' : '');
+  const amt = p.amount == null ? '' : `${sign(p.amount)}${Math.round(p.amount).toLocaleString()} 元 `;
+  return `${amt}(${sign(p.pct)}${p.pct.toFixed(2)}%)`;
 }
 
 // 「新進榜」比較基準：每個規則記住最近一個資料日期的名單，以及更早一次的名單。
@@ -131,7 +163,7 @@ function newEntryCodes(rule, hits) {
   return new Set(prev ? codes.filter(c => !prev.includes(c)) : []);
 }
 
-// 匯出 / 匯入格式：{ rules, watchlist }；相容舊版純規則陣列。回傳 null 代表格式不正確
+// 匯出 / 匯入格式：{ rules, watchlist, holdings }；相容舊版純規則陣列。回傳 null 代表格式不正確
 function parseBackup(text, validCodes) {
   let data;
   try { data = JSON.parse(text); } catch { return null; }
@@ -145,6 +177,7 @@ function parseBackup(text, validCodes) {
       // 名次數量缺漏或異常時補預設值，避免畫面出現「前 undefined 名」
       .map(r => ({ ...r, limit: Math.max(1, Math.min(100, parseInt(r.limit) || 10)) })),
     watchlist: [...new Set(rawWatch)].filter(c => validCodes.has(c)),
+    holdings: cleanHoldings(data.holdings, validCodes),
   };
 }
 
@@ -394,6 +427,7 @@ function toggleWatch(code) {
   const i = watchlist.indexOf(code);
   if (i >= 0) watchlist.splice(i, 1); else watchlist.push(code);
   saveWatch();
+  if (i >= 0 && holdings[code]) { delete holdings[code]; saveHoldings(); }
   const on = i < 0;
   const name = stocks.find(x => x.code === code)?.name ?? code;
   document.querySelectorAll('button.star').forEach(b => {
@@ -461,9 +495,11 @@ function watchSummary() {
   const li = s => {
     const hit = tags.get(s.code);
     const chg = s.change_pct == null ? '—' : `${s.change_pct > 0 ? '+' : ''}${fmt('change_pct', s.change_pct)}`;
+    const pnl = holdingPnl(s, holdings[s.code]);
     return `<li class="watch-sum-row">
       <span><b>${esc(s.name)}</b> <span class="muted small">${esc(s.code)}</span></span>
       <span class="${trendClass(s.change_pct)}">${chg}</span>
+      ${pnl ? `<span class="small ${trendClass(pnl.pct)} watch-hit">損益 ${pnlText(pnl)}</span>` : ''}
       ${hit ? `<span class="small muted watch-hit">命中：${hit.map(esc).join('、')}</span>` : ''}</li>`;
   };
   const more = items.length > WATCH_SUMMARY_LIMIT
@@ -503,7 +539,7 @@ function renderWatch() {
   }
   const rows = watchlist.map(code => {
     const s = stocks.find(x => x.code === code);
-    return s ? stockRow(s) : `
+    return s ? stockRow(s) + holdingForm(s) : `
       <li class="stock gone">
         <div class="stock-main">
           <div class="stock-name"><b>${esc(code)}</b> <span class="muted">已無資料</span></div>
@@ -511,7 +547,46 @@ function renderWatch() {
         </div>
       </li>`;
   }).join('');
-  el.innerHTML = `<ol class="list">${rows}</ol>`;
+  el.innerHTML = portfolioTotal() + `<ol class="list">${rows}</ol>`;
+}
+
+// 自選頁頂端：有填成本（均價與股數）的持股總損益
+function portfolioTotal() {
+  let cost = 0, amount = 0;
+  for (const code of watchlist) {
+    const s = stocks.find(x => x.code === code);
+    const p = s && holdingPnl(s, holdings[code]);
+    if (p && p.amount != null) { cost += p.cost; amount += p.amount; }
+  }
+  if (!cost) return '';
+  return `<div class="card portfolio"><b>持股總損益</b>
+    <span class="${trendClass(amount)}">${pnlText({ amount, pct: amount / cost * 100 })}</span>
+    <div class="small muted">成本 ${Math.round(cost).toLocaleString()} 元・概估，未含手續費與證交稅</div></div>`;
+}
+
+// 每檔自選下方的成本表單（可收合）；有填時顯示未實現損益
+function holdingForm(s) {
+  const h = holdings[s.code] ?? {};
+  const pnl = holdingPnl(s, h);
+  return `<li class="holding-row"><details ${h.cost || h.shares ? 'open' : ''}>
+    <summary class="small">${pnl ? `<span class="${trendClass(pnl.pct)}">損益 ${pnlText(pnl)}</span>` : '填入買進成本'}</summary>
+    <form class="holding-form" onsubmit="saveHolding(event, '${esc(s.code)}')">
+      <label class="small">均價 <input name="cost" type="number" inputmode="decimal" min="0" step="any" value="${h.cost ?? ''}"></label>
+      <label class="small">股數 <input name="shares" type="number" inputmode="numeric" min="0" step="1" value="${h.shares ?? ''}"></label>
+      <button type="submit" class="ghost">儲存</button>
+    </form>
+    <div class="small muted">損益為概估，未含手續費與證交稅；資料只存在這支手機的瀏覽器。</div>
+  </details></li>`;
+}
+
+function saveHolding(e, code) {
+  e.preventDefault();
+  const f = e.target;
+  const next = cleanHoldings({ [code]: { cost: f.cost.value, shares: f.shares.value } });
+  if (next[code]) holdings[code] = next[code]; else delete holdings[code];
+  saveHoldings();
+  renderWatch();
+  renderPicks();
 }
 
 // ── 分頁：我的規則 ────────────────────────────────────────────────────────────
@@ -545,7 +620,7 @@ function exportRules() {
     alert('目前沒有規則或自選股可以匯出。');
     return;
   }
-  const text = JSON.stringify({ rules, watchlist });
+  const text = JSON.stringify({ rules, watchlist, holdings });
   navigator.clipboard?.writeText(text).then(
     () => alert('規則與自選股已複製，可以貼到記事本保存，或在另一支手機「匯入」。'),
     () => prompt('複製下面這段文字保存：', text));
@@ -562,8 +637,10 @@ function importRules() {
   const newWatch = incoming.watchlist.filter(c => !watchlist.includes(c));
   rules.push(...incoming.rules);
   watchlist.push(...newWatch);
+  for (const [c, h] of Object.entries(incoming.holdings)) if (!holdings[c]) holdings[c] = h;
   saveRules();
   saveWatch();
+  saveHoldings();
   renderRules();
   renderWatch();
   renderPicks();

@@ -140,3 +140,10 @@ button.star[aria-pressed="true"] { color: #f59e0b; }
 .watch-sum summary h2 { display: inline; }
 .watch-sum-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; padding: 6px 0; border-top: 1px solid var(--border); font-variant-numeric: tabular-nums; }
 .watch-hit { flex-basis: 100%; }
+
+.portfolio { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; font-variant-numeric: tabular-nums; }
+.portfolio .small { flex-basis: 100%; }
+.holding-row { list-style: none; padding: 0 4px 8px; }
+.holding-row summary { cursor: pointer; }
+.holding-form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px 0; }
+.holding-form input { width: 7em; }
