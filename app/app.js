@@ -484,12 +484,16 @@ const WATCH_SUMMARY_LIMIT = 10;
 let watchSummaryOpen = true, watchSummaryAll = false;
 
 function watchSummary() {
-  const items = watchlist.map(code => stocks.find(x => x.code === code)).filter(Boolean)
+  const byCode = new Map(stocks.map(s => [s.code, s]));
+  const items = watchlist.map(code => byCode.get(code)).filter(Boolean)
     .sort((a, b) => (b.change_pct ?? -Infinity) - (a.change_pct ?? -Infinity));
   if (!items.length) return '';   // 沒有自選股（或都已無資料）就不顯示
+  const watched = new Set(watchlist);
   const tags = new Map();
   for (const r of [...PRESETS, ...rules]) {
-    for (const s of applyRule(r)) tags.set(s.code, [...(tags.get(s.code) ?? []), r.name]);
+    for (const s of applyRule(r)) {
+      if (watched.has(s.code)) tags.set(s.code, [...(tags.get(s.code) ?? []), r.name]);
+    }
   }
   const shown = watchSummaryAll ? items : items.slice(0, WATCH_SUMMARY_LIMIT);
   const li = s => {
