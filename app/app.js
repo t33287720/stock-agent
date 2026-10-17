@@ -87,9 +87,11 @@ const PRESETS = [
 
 // ── 狀態 ──────────────────────────────────────────────────────────────────────
 let stocks = [];          // [{code, name, market, close, ...}]
+let market = null;   // 大盤概況（舊版 JSON 可能沒有）
 let dataDate = '';        // 資料日期（YYYY-MM-DD）
 let rules = loadRules();
 let watchlist = loadWatch();   // 自選股代號陣列
+let holdings = loadHoldings(); // 買進成本 { 代號: {cost, shares} }，欄位皆可留空
 
 function loadRules() {
   try { return JSON.parse(localStorage.getItem('stock-rules')) || []; } catch { return []; }
@@ -106,6 +108,37 @@ function loadWatch() {
 }
 function saveWatch() {
   try { localStorage.setItem('stock-watchlist', JSON.stringify(watchlist)); } catch { /* 無痕模式等情況存不了 */ }
+}
+
+function loadHoldings() {
+  try { return cleanHoldings(JSON.parse(localStorage.getItem('stock-holdings'))); } catch { return {}; }
+}
+function saveHoldings() {
+  try { localStorage.setItem('stock-holdings', JSON.stringify(holdings)); } catch { /* 無痕模式等情況存不了 */ }
+}
+// 只保留格式正確的成本資料（均價 > 0、股數 > 0，至少一項有值）
+function cleanHoldings(h, validCodes) {
+  const out = {};
+  if (!h || typeof h !== 'object' || Array.isArray(h)) return out;
+  for (const [code, v] of Object.entries(h)) {
+    if (validCodes && !validCodes.has(code)) continue;
+    const cost = Number(v?.cost) > 0 ? Number(v.cost) : null;
+    const shares = Number(v?.shares) > 0 ? Number(v.shares) : null;
+    if (cost || shares) out[code] = { cost, shares };
+  }
+  return out;
+}
+// 未實現損益：需要均價才算；有股數才有金額。未含手續費與證交稅
+function holdingPnl(s, h) {
+  if (!h?.cost || s.close == null) return null;
+  const pct = (s.close / h.cost - 1) * 100;
+  const amount = h.shares ? (s.close - h.cost) * h.shares : null;
+  return { pct, amount, cost: h.shares ? h.cost * h.shares : null };
+}
+function pnlText(p) {
+  const sign = v => (v > 0 ? '+' : '');
+  const amt = p.amount == null ? '' : `${sign(p.amount)}${Math.round(p.amount).toLocaleString()} 元 `;
+  return `${amt}(${sign(p.pct)}${p.pct.toFixed(2)}%)`;
 }
 
 // 「新進榜」比較基準：每個規則記住最近一個資料日期的名單，以及更早一次的名單。
@@ -130,7 +163,7 @@ function newEntryCodes(rule, hits) {
   return new Set(prev ? codes.filter(c => !prev.includes(c)) : []);
 }
 
-// 匯出 / 匯入格式：{ rules, watchlist }；相容舊版純規則陣列。回傳 null 代表格式不正確
+// 匯出 / 匯入格式：{ rules, watchlist, holdings }；相容舊版純規則陣列。回傳 null 代表格式不正確
 function parseBackup(text, validCodes) {
   let data;
   try { data = JSON.parse(text); } catch { return null; }
@@ -144,6 +177,7 @@ function parseBackup(text, validCodes) {
       // 名次數量缺漏或異常時補預設值，避免畫面出現「前 undefined 名」
       .map(r => ({ ...r, limit: Math.max(1, Math.min(100, parseInt(r.limit) || 10)) })),
     watchlist: [...new Set(rawWatch)].filter(c => validCodes.has(c)),
+    holdings: cleanHoldings(data.holdings, validCodes),
   };
 }
 
@@ -393,6 +427,7 @@ function toggleWatch(code) {
   const i = watchlist.indexOf(code);
   if (i >= 0) watchlist.splice(i, 1); else watchlist.push(code);
   saveWatch();
+  if (i >= 0 && holdings[code]) { delete holdings[code]; saveHoldings(); }
   const on = i < 0;
   const name = stocks.find(x => x.code === code)?.name ?? code;
   document.querySelectorAll('button.star').forEach(b => {
@@ -402,6 +437,7 @@ function toggleWatch(code) {
     b.textContent = on ? '★' : '☆';
   });
   renderWatch();
+  renderPicks();
 }
 
 function ruleCard(rule, { actions = '' } = {}) {
@@ -423,8 +459,69 @@ function ruleCard(rule, { actions = '' } = {}) {
 }
 
 // ── 分頁：今日推薦 ────────────────────────────────────────────────────────────
+function marketCard(m) {
+  if (!m) return '';   // 舊版 JSON 沒有 market 欄位就不顯示
+  const total = m.up + m.down + m.flat || 1;
+  const pct = n => (n / total * 100).toFixed(1);
+  const amount = m.amount >= 1e8 ? `${(m.amount / 1e8).toLocaleString('zh-TW', { maximumFractionDigits: 0 })} 億` : '—';
+  const ratio = m.amount_ratio ? `（前 5 日均額的 ${m.amount_ratio} 倍）` : '';
+  return `
+    <article class="card market" aria-label="大盤漲跌家數概況">
+      <h2>今日盤勢</h2>
+      <div class="breadth" role="img" aria-label="上漲 ${m.up} 家、下跌 ${m.down} 家、平盤 ${m.flat} 家">
+        <span class="b-up" style="width:${pct(m.up)}%"></span><span class="b-flat" style="width:${pct(m.flat)}%"></span><span class="b-down" style="width:${pct(m.down)}%"></span>
+      </div>
+      <div class="small market-nums">
+        <span class="up">上漲 ${m.up}</span><span class="muted">平盤 ${m.flat}</span><span class="down">下跌 ${m.down}</span>
+      </div>
+      <div class="small muted">漲停約 ${m.limit_up} · 跌停約 ${m.limit_down}（以 ±9.5% 近似）</div>
+      <div class="small muted">成交金額 ${amount}${ratio}</div>
+    </article>`;
+}
+
+// 自選股今日摘要：依漲跌幅排序，標出命中的推薦／自訂規則；預設顯示前 10 檔
+const WATCH_SUMMARY_LIMIT = 10;
+let watchSummaryOpen = true, watchSummaryAll = false;
+
+function watchSummary() {
+  const byCode = new Map(stocks.map(s => [s.code, s]));
+  const items = watchlist.map(code => byCode.get(code)).filter(Boolean)
+    .sort((a, b) => (b.change_pct ?? -Infinity) - (a.change_pct ?? -Infinity));
+  if (!items.length) return '';   // 沒有自選股（或都已無資料）就不顯示
+  const watched = new Set(watchlist);
+  const tags = new Map();
+  for (const r of [...PRESETS, ...rules]) {
+    for (const s of applyRule(r)) {
+      if (watched.has(s.code)) tags.set(s.code, [...(tags.get(s.code) ?? []), r.name]);
+    }
+  }
+  const shown = watchSummaryAll ? items : items.slice(0, WATCH_SUMMARY_LIMIT);
+  const li = s => {
+    const hit = tags.get(s.code);
+    const chg = s.change_pct == null ? '—' : `${s.change_pct > 0 ? '+' : ''}${fmt('change_pct', s.change_pct)}`;
+    const pnl = holdingPnl(s, holdings[s.code]);
+    return `<li class="watch-sum-row">
+      <span><b>${esc(s.name)}</b> <span class="muted small">${esc(s.code)}</span></span>
+      <span class="${trendClass(s.change_pct)}">${chg}</span>
+      ${pnl ? `<span class="small ${trendClass(pnl.pct)} watch-hit">損益 ${pnlText(pnl)}</span>` : ''}
+      ${hit ? `<span class="small muted watch-hit">命中：${hit.map(esc).join('、')}</span>` : ''}</li>`;
+  };
+  const more = items.length > WATCH_SUMMARY_LIMIT
+    ? `<button type="button" class="ghost" onclick="toggleWatchSummaryAll()">${watchSummaryAll ? '收合' : `顯示全部 ${items.length} 檔`}</button>` : '';
+  return `
+    <details class="card watch-sum" ${watchSummaryOpen ? 'open' : ''} ontoggle="watchSummaryOpen = this.open">
+      <summary><h2>我的自選 · 今日</h2></summary>
+      <ol class="list">${shown.map(li).join('')}</ol>${more}
+    </details>`;
+}
+
+function toggleWatchSummaryAll() {
+  watchSummaryAll = !watchSummaryAll;
+  renderPicks();
+}
+
 function renderPicks() {
-  document.getElementById('tab-picks').innerHTML = PRESETS.map((p, i) =>
+  document.getElementById('tab-picks').innerHTML = watchSummary() + marketCard(market) + PRESETS.map((p, i) =>
     ruleCard(p, { actions: `<button class="ghost" onclick="copyPreset(${i})">複製成我的規則</button>` })).join('');
 }
 
@@ -446,7 +543,7 @@ function renderWatch() {
   }
   const rows = watchlist.map(code => {
     const s = stocks.find(x => x.code === code);
-    return s ? stockRow(s) : `
+    return s ? stockRow(s) + holdingForm(s) : `
       <li class="stock gone">
         <div class="stock-main">
           <div class="stock-name"><b>${esc(code)}</b> <span class="muted">已無資料</span></div>
@@ -454,7 +551,46 @@ function renderWatch() {
         </div>
       </li>`;
   }).join('');
-  el.innerHTML = `<ol class="list">${rows}</ol>`;
+  el.innerHTML = portfolioTotal() + `<ol class="list">${rows}</ol>`;
+}
+
+// 自選頁頂端：有填成本（均價與股數）的持股總損益
+function portfolioTotal() {
+  let cost = 0, amount = 0;
+  for (const code of watchlist) {
+    const s = stocks.find(x => x.code === code);
+    const p = s && holdingPnl(s, holdings[code]);
+    if (p && p.amount != null) { cost += p.cost; amount += p.amount; }
+  }
+  if (!cost) return '';
+  return `<div class="card portfolio"><b>持股總損益</b>
+    <span class="${trendClass(amount)}">${pnlText({ amount, pct: amount / cost * 100 })}</span>
+    <div class="small muted">成本 ${Math.round(cost).toLocaleString()} 元・概估，未含手續費與證交稅</div></div>`;
+}
+
+// 每檔自選下方的成本表單（可收合）；有填時顯示未實現損益
+function holdingForm(s) {
+  const h = holdings[s.code] ?? {};
+  const pnl = holdingPnl(s, h);
+  return `<li class="holding-row"><details ${h.cost || h.shares ? 'open' : ''}>
+    <summary class="small">${pnl ? `<span class="${trendClass(pnl.pct)}">損益 ${pnlText(pnl)}</span>` : '填入買進成本'}</summary>
+    <form class="holding-form" onsubmit="saveHolding(event, '${esc(s.code)}')">
+      <label class="small">均價 <input name="cost" type="number" inputmode="decimal" min="0" step="any" value="${h.cost ?? ''}"></label>
+      <label class="small">股數 <input name="shares" type="number" inputmode="numeric" min="0" step="1" value="${h.shares ?? ''}"></label>
+      <button type="submit" class="ghost">儲存</button>
+    </form>
+    <div class="small muted">損益為概估，未含手續費與證交稅；資料只存在這支手機的瀏覽器。</div>
+  </details></li>`;
+}
+
+function saveHolding(e, code) {
+  e.preventDefault();
+  const f = e.target;
+  const next = cleanHoldings({ [code]: { cost: f.cost.value, shares: f.shares.value } });
+  if (next[code]) holdings[code] = next[code]; else delete holdings[code];
+  saveHoldings();
+  renderWatch();
+  renderPicks();
 }
 
 // ── 分頁：我的規則 ────────────────────────────────────────────────────────────
@@ -488,7 +624,7 @@ function exportRules() {
     alert('目前沒有規則或自選股可以匯出。');
     return;
   }
-  const text = JSON.stringify({ rules, watchlist });
+  const text = JSON.stringify({ rules, watchlist, holdings });
   navigator.clipboard?.writeText(text).then(
     () => alert('規則與自選股已複製，可以貼到記事本保存，或在另一支手機「匯入」。'),
     () => prompt('複製下面這段文字保存：', text));
@@ -505,8 +641,10 @@ function importRules() {
   const newWatch = incoming.watchlist.filter(c => !watchlist.includes(c));
   rules.push(...incoming.rules);
   watchlist.push(...newWatch);
+  for (const [c, h] of Object.entries(incoming.holdings)) if (!holdings[c]) holdings[c] = h;
   saveRules();
   saveWatch();
+  saveHoldings();
   renderRules();
   renderWatch();
   renderPicks();
@@ -624,14 +762,16 @@ async function init() {
     const resp = await fetch('stocks-latest.json', { cache: 'no-cache' });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
+    const offline = resp.headers.get('x-sw-cache') === '1';
+    market = data.market ?? null;
     dataDate = data.date;
     stocks = data.rows.map(r => Object.fromEntries(data.columns.map((c, i) => [c, r[i]])));
     document.getElementById('data-date').textContent =
-      `${data.date} 收盤資料 · ${stocks.length} 支${data.has_valuation ? '' : ' · 本益比等估值尚未公布'}`;
+      `${offline ? `離線資料（${data.date}）` : `${data.date} 收盤資料`} · ${stocks.length} 支${data.has_valuation ? '' : ' · 本益比等估值尚未公布'}`;
   } catch {
     document.getElementById('data-date').textContent = '資料載入失敗，請稍後再試';
     document.getElementById('tab-picks').innerHTML =
-      '<p class="muted empty">資料載入失敗，請檢查網路後<button class="ghost" onclick="location.reload()">重新載入</button></p>';
+      '<p class="muted empty">目前無法取得資料，請檢查網路後<button class="ghost" onclick="location.reload()">重試</button></p>';
     return;
   }
   renderPicks();
@@ -640,3 +780,7 @@ async function init() {
   renderAll();
 }
 init();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}

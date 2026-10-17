@@ -115,6 +115,13 @@ dialog label.inline { flex-direction: row; align-items: center; gap: 6px; margin
 .stock-name { flex: 1; min-width: 0; }
 button.star { background: transparent; border: 0; padding: 0 6px 0 0; font-size: 20px; line-height: 1; color: var(--muted); }
 button.star[aria-pressed="true"] { color: #f59e0b; }
+
+/* 大盤概況 */
+.breadth { display: flex; height: 10px; border-radius: 99px; overflow: hidden; margin: 8px 0; background: var(--border); }
+.b-up { background: var(--up); }
+.b-flat { background: var(--muted); }
+.b-down { background: var(--down); }
+.market-nums { display: flex; justify-content: space-between; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
 .badge-new { display: inline-block; padding: 0 6px; border-radius: 8px; background: #f59e0b; color: #fff; font-size: 11px; line-height: 18px; vertical-align: middle; }
 
 /* 規則回測 */
@@ -127,3 +134,16 @@ button.star[aria-pressed="true"] { color: #f59e0b; }
 .volbars rect { fill: var(--muted); opacity: .55; }
 .volbars rect.today { fill: currentColor; opacity: 1; }
 .vol-hot { color: #e67e22; }
+
+/* 自選股今日摘要 */
+.watch-sum summary { cursor: pointer; }
+.watch-sum summary h2 { display: inline; }
+.watch-sum-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; padding: 6px 0; border-top: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+.watch-hit { flex-basis: 100%; }
+
+.portfolio { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; font-variant-numeric: tabular-nums; }
+.portfolio .small { flex-basis: 100%; }
+.holding-row { list-style: none; padding: 0 4px 8px; }
+.holding-row summary { cursor: pointer; }
+.holding-form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px 0; }
+.holding-form input { width: 7em; }

@@ -21,7 +21,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 import sources
-from indicators import latest_indicators
+from indicators import latest_indicators, market_summary
 
 KEEP_DAYS = 100          # 保留幾個交易日（MA60、MACD 需要至少 60 天以上）
 TAIPEI = ZoneInfo("Asia/Taipei")
@@ -110,6 +110,7 @@ def main():
         "generated_at": datetime.now(TAIPEI).isoformat(timespec="minutes"),
         "trading_days": int(history["date"].nunique()),
         "has_valuation": has_valuation,
+        "market": market_summary(history),
         "columns": columns,
         "rows": rows,
     }

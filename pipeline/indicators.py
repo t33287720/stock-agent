@@ -73,6 +73,31 @@ def _one_stock(s: pd.DataFrame) -> dict:
     }
 
 
+def market_summary(history: pd.DataFrame) -> dict | None:
+    """最新交易日的大盤概況：漲跌平家數、漲停／跌停家數（±9.5% 近似）、成交金額與近 5 日均額倍數。
+    只有一個交易日（沒有前一日可比）時回傳 None。"""
+    days = sorted(history["date"].unique())
+    if len(days) < 2:
+        return None
+    h = history.sort_values(["code", "date"]).copy()
+    h["prev_close"] = h.groupby("code")["close"].shift(1)
+    h["amount"] = h["close"] * h["volume"]
+    today = h[h["date"] == days[-1]]
+    chg = (today["close"] / today["prev_close"] - 1) * 100
+    chg = chg[today["prev_close"].notna()]   # 新上市沒有前一日，不列入漲跌
+    amounts = h.groupby("date")["amount"].sum()
+    prev5 = amounts.reindex(days[-6:-1]).mean()
+    return {
+        "up": int((chg > 0).sum()),
+        "down": int((chg < 0).sum()),
+        "flat": int((chg == 0).sum()),
+        "limit_up": int((chg >= 9.5).sum()),
+        "limit_down": int((chg <= -9.5).sum()),
+        "amount": round(float(amounts[days[-1]])),
+        "amount_ratio": round(float(amounts[days[-1]] / prev5), 2) if prev5 else None,
+    }
+
+
 def latest_indicators(history: pd.DataFrame) -> pd.DataFrame:
     """回傳每支「最新交易日有成交」的股票一列：代號、名稱、市場、收盤價 + 各項指標。"""
     latest_day = history["date"].max()
