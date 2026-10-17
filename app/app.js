@@ -762,15 +762,16 @@ async function init() {
     const resp = await fetch('stocks-latest.json', { cache: 'no-cache' });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
+    const offline = resp.headers.get('x-sw-cache') === '1';
     market = data.market ?? null;
     dataDate = data.date;
     stocks = data.rows.map(r => Object.fromEntries(data.columns.map((c, i) => [c, r[i]])));
     document.getElementById('data-date').textContent =
-      `${data.date} 收盤資料 · ${stocks.length} 支${data.has_valuation ? '' : ' · 本益比等估值尚未公布'}`;
+      `${offline ? `離線資料（${data.date}）` : `${data.date} 收盤資料`} · ${stocks.length} 支${data.has_valuation ? '' : ' · 本益比等估值尚未公布'}`;
   } catch {
     document.getElementById('data-date').textContent = '資料載入失敗，請稍後再試';
     document.getElementById('tab-picks').innerHTML =
-      '<p class="muted empty">資料載入失敗，請檢查網路後<button class="ghost" onclick="location.reload()">重新載入</button></p>';
+      '<p class="muted empty">目前無法取得資料，請檢查網路後<button class="ghost" onclick="location.reload()">重試</button></p>';
     return;
   }
   renderPicks();
@@ -779,3 +780,7 @@ async function init() {
   renderAll();
 }
 init();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
