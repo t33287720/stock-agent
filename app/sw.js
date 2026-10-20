@@ -1,6 +1,6 @@
 // 離線快取：App 本體 stale-while-revalidate，stocks-latest.json network-first（失敗回傳上次快取）
 // 改版時調整 VERSION，activate 會清掉舊快取。路徑一律相對，才能部署在 GitHub Pages 子路徑。
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = `stock-agent-${VERSION}`;
 const PRECACHE = ['./', 'index.html', 'app.js', 'style.css', 'manifest.json', 'icon.svg', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'];
 

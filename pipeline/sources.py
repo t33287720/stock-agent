@@ -114,3 +114,51 @@ def tpex_valuation(day: date) -> dict[str, dict]:
             "yield": _num(item.get("YieldRatio")),
         }
     return out
+
+
+def _find(fields: list[str], *keywords: str) -> int | None:
+    """欄位名稱同時包含所有關鍵字的第一個欄位位置；找不到回傳 None。"""
+    for i, f in enumerate(fields):
+        if all(k in f for k in keywords):
+            return i
+    return None
+
+
+def twse_institutional(day: date) -> dict[str, list[float]]:
+    """上市股票某一天三大法人買賣超（股）：{代號: [外資, 投信, 自營商]}。沒資料或格式不符時回傳空 dict。"""
+    data = _get_json("https://www.twse.com.tw/rwd/zh/fund/T86"
+                     f"?date={day:%Y%m%d}&selectType=ALL&response=json")
+    if data.get("stat") != "OK":
+        return {}
+    fields = [f.strip() for f in data.get("fields", [])]
+    idx = [_find(fields, "證券代號"), _find(fields, "外", "買賣超"),
+           _find(fields, "投信", "買賣超"), _find(fields, "自營商買賣超")]
+    if None in idx:
+        return {}
+    out = {}
+    for r in data.get("data", []):
+        code = r[idx[0]].strip()
+        vals = [_num(r[i]) for i in idx[1:]]
+        if is_stock(code) and None not in vals:
+            out[code] = vals
+    return out
+
+
+def tpex_institutional(day: date) -> dict[str, list[float]]:
+    """上櫃股票某一天三大法人買賣超（股）。openapi 只提供最新一天，資料日期不是 day 時回傳空 dict。"""
+    data = _get_json("https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trading")
+    roc_day = f"{day.year - 1911}{day:%m%d}"
+    out = {}
+    for item in data:
+        if item.get("Date") != roc_day:
+            continue
+        keys = list(item)
+
+        def pick(*kw):
+            k = next((k for k in keys if all(w.lower() in k.lower() for w in kw)), None)
+            return _num(item.get(k)) if k else None
+        vals = [pick("foreign", "diff"), pick("investmenttrust", "diff"), pick("dealers", "diff")]
+        code = str(item.get("SecuritiesCompanyCode", "")).strip()
+        if is_stock(code) and None not in vals:
+            out[code] = vals
+    return out

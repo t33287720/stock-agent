@@ -147,3 +147,8 @@ button.star[aria-pressed="true"] { color: #f59e0b; }
 .holding-row summary { cursor: pointer; }
 .holding-form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px 0; }
 .holding-form input { width: 7em; }
+.detail .inst { grid-column: 1 / -1; width: 100%; border-collapse: collapse; font-size: 13px; text-align: right; }
+.inst caption { text-align: left; }
+.inst th { font-weight: normal; color: var(--muted); text-align: right; padding: 2px 4px; }
+.inst tbody th { text-align: left; }
+.inst td { padding: 2px 4px; font-variant-numeric: tabular-nums; }

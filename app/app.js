@@ -88,6 +88,7 @@ const PRESETS = [
 // ── 狀態 ──────────────────────────────────────────────────────────────────────
 let stocks = [];          // [{code, name, market, close, ...}]
 let market = null;   // 大盤概況（舊版 JSON 可能沒有）
+let inst = {}, instDates = []; // 三大法人近 5 日買賣超（張）{代號: [[外資,投信,自營商]|null, ...]}（舊版 JSON 可能沒有）
 let dataDate = '';        // 資料日期（YYYY-MM-DD）
 let rules = loadRules();
 let watchlist = loadWatch();   // 自選股代號陣列
@@ -383,6 +384,19 @@ function volumeBars(vols) {
   return `<svg class="volbars" viewBox="0 0 ${W} ${H}" role="img" aria-label="近 ${v.length} 日成交量，今日 ${v[v.length - 1]} 張">${bars}</svg>`;
 }
 
+// 三大法人近 N 日買賣超小表（張）：買超紅、賣超綠（台股配色，沿用 trendClass）；缺資料的日子顯示「—」
+function instTable(code) {
+  const days = inst[code];
+  if (!Array.isArray(days) || !days.some(Boolean)) return '';
+  const cell = n => typeof n === 'number'
+    ? `<td class="${trendClass(n)}">${n > 0 ? '+' : ''}${n.toLocaleString()}</td>` : '<td class="muted">—</td>';
+  const rows = days.map((d, i) =>
+    `<tr><th scope="row">${esc((instDates[i] ?? '').slice(5))}</th>${[0, 1, 2].map(k => cell(d?.[k])).join('')}</tr>`).join('');
+  return `<table class="inst"><caption class="muted spark-legend">法人買賣超（張）· 近 ${days.length} 日</caption>
+    <thead><tr><th></th><th scope="col">外資</th><th scope="col">投信</th><th scope="col">自營商</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
 function stockDetail(s) {
   const cells = Object.keys(FIELDS).map(f =>
     `<div><span class="muted">${esc(FIELDS[f].label)}</span><span>${fmt(f, s[f])}</span></div>`).join('');
@@ -392,7 +406,7 @@ function stockDetail(s) {
   const ratio = typeof s.vol_ratio === 'number'
     ? `量比 <b class="${s.vol_ratio > 1.5 ? 'vol-hot' : ''}">${s.vol_ratio.toFixed(2)}</b> 倍` : '量比 —';
   const vlegend = vchart ? `<span class="muted spark-legend">近 20 日成交量（張）· 最右為今日 · ${ratio}</span>` : '';
-  return `<div class="detail">${chart}${legend}${vchart}${vlegend}${cells}
+  return `<div class="detail">${chart}${legend}${vchart}${vlegend}${cells}${instTable(s.code)}
     <a href="https://tw.stock.yahoo.com/quote/${encodeURIComponent(s.code)}" target="_blank" rel="noopener">在 Yahoo 股市看走勢圖 ↗</a></div>`;
 }
 
@@ -765,6 +779,8 @@ async function init() {
     const offline = resp.headers.get('x-sw-cache') === '1';
     market = data.market ?? null;
     dataDate = data.date;
+    inst = data.inst ?? {};
+    instDates = data.inst_dates ?? [];
     stocks = data.rows.map(r => Object.fromEntries(data.columns.map((c, i) => [c, r[i]])));
     document.getElementById('data-date').textContent =
       `${offline ? `離線資料（${data.date}）` : `${data.date} 收盤資料`} · ${stocks.length} 支${data.has_valuation ? '' : ' · 本益比等估值尚未公布'}`;
