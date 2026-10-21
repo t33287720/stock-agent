@@ -56,6 +56,25 @@ def test_latest_indicators_skips_stocks_without_trade_today():
     assert out.iloc[0]["close"] == 10 + len(days) - 1
 
 
+def test_market_summary_counts_breadth_and_limits():
+    def row(day, code, close, vol=1000):
+        return {"date": day, "code": code, "name": code, "market": "上市", "open": close, "high": close,
+                "low": close, "close": close, "volume": vol}
+    rows = [row("2026-09-01", c, 100) for c in ("A", "B", "C", "D", "E")]
+    rows += [row("2026-09-02", "A", 110), row("2026-09-02", "B", 90), row("2026-09-02", "C", 100),
+             row("2026-09-02", "D", 101), row("2026-09-02", "N", 50)]   # N 新上市、E 停牌
+    m = indicators.market_summary(pd.DataFrame(rows))
+    assert (m["up"], m["down"], m["flat"]) == (2, 1, 1)
+    assert (m["limit_up"], m["limit_down"]) == (1, 1)
+    assert m["amount"] == 110000 + 90000 + 100000 + 101000 + 50000
+    assert m["amount_ratio"] == round(451000 / 500000, 2)
+
+
+def test_market_summary_needs_two_days():
+    df = pd.DataFrame([{"date": "2026-09-01", "code": "A", "name": "A", "market": "上市",
+                        "open": 1, "high": 1, "low": 1, "close": 1, "volume": 1}])
+    assert indicators.market_summary(df) is None
+
 def _history(code, n_days):
     days = pd.bdate_range("2026-06-01", periods=n_days).strftime("%Y-%m-%d")
     return [{"date": day, "code": code, "name": code, "market": "上市", "open": 10 + i, "high": 11 + i,
@@ -96,3 +115,29 @@ def test_vol_ratio_is_today_over_prev_5_day_mean():
     assert abs(row["vol_ratio"] - 80 / 77) < 1e-9   # 前 5 日 75..79 張，平均 77
     short = indicators.latest_indicators(pd.DataFrame(_history("2330", 5))).iloc[0]
     assert pd.isna(short["vol_ratio"])
+
+
+def test_twse_institutional_parses_by_field_name(monkeypatch):
+    payload = {"stat": "OK",
+               "fields": ["證券代號", "證券名稱", "外陸資買賣超股數(不含外資自營商)", "投信買賣超股數", "自營商買賣超股數", "三大法人買賣超股數"],
+               "data": [["2330", "台積電", "1,234,000", "-5,000", "10,000", "1,239,000"],
+                        ["0050", "ETF", "1", "1", "1", "3"]]}
+    monkeypatch.setattr(sources, "_get_json", lambda url: payload)
+    assert sources.twse_institutional(date(2026, 10, 19)) == {"2330": [1234000.0, -5000.0, 10000.0]}
+
+
+def test_institutional_5d_converts_to_lots_and_keeps_gaps():
+    import build
+    cache = {"2026-10-16": {"2330": [2000, -1000, 0]}, "2026-10-19": {"2330": [5000, 0, 1000]}}
+    out = build.institutional_5d(cache, ["2026-10-16", "2026-10-17", "2026-10-19"])
+    assert out == {"2330": [[2, -1, 0], None, [5, 0, 1]]}
+
+
+def test_range_position_basic_flat_and_short():
+    close = pd.Series([10.0, 12.0, 11.0, 9.0, 10.0])
+    r = indicators.range_position(close, close + 1, close - 1)
+    assert r["high"] == 13.0 and r["low"] == 8.0 and r["days"] == 5
+    assert r["pos"] == 40.0 and r["from_high"] == -23.1
+    flat = pd.Series([5.0] * 10)
+    assert indicators.range_position(flat, flat, flat)["pos"] == 50.0
+    assert indicators.range_position(pd.Series([5.0]), pd.Series([5.0]), pd.Series([5.0])) is None

@@ -30,6 +30,19 @@ def _rsi(close: pd.Series, period: int = 14) -> pd.Series:
     return 100 - 100 / (1 + gain / loss.replace(0, np.nan))
 
 
+RANGE_DAYS = 100
+
+
+def range_position(close: pd.Series, high: pd.Series, low: pd.Series, days: int = RANGE_DAYS) -> dict | None:
+    """近 days 日（不足則用全部）高低區間：high／low／pos（現價在區間的 0~100%）／from_high（距高點 %）／days（實際天數）。"""
+    if len(close) < 2:
+        return None
+    hi, lo, last = float(high.iloc[-days:].max()), float(low.iloc[-days:].min()), float(close.iloc[-1])
+    pos = (last - lo) / (hi - lo) * 100 if hi > lo else 50.0
+    return {"high": round(hi, 2), "low": round(lo, 2), "pos": round(pos, 1),
+            "from_high": round((last / hi - 1) * 100, 1), "days": int(min(len(close), days))}
+
+
 def _one_stock(s: pd.DataFrame) -> dict:
     close, high, low, vol = s["close"], s["high"], s["low"], s["volume"]
     n = len(s)
@@ -69,7 +82,33 @@ def _one_stock(s: pd.DataFrame) -> dict:
         "from_high_60": (last / high.iloc[-60:].max() - 1) * 100 if n >= 60 else None,
         "spark":        [round(float(v), 2) for v in close.iloc[-SPARK_DAYS:]],
         # 與 spark 同長度、同日期的成交量（張，取整數），給 App 回測成交量條件用
+        "range":        range_position(close, high, low),
         "vols":         [int(round(v / 1000)) for v in vol.iloc[-SPARK_DAYS:]],
+    }
+
+
+def market_summary(history: pd.DataFrame) -> dict | None:
+    """最新交易日的大盤概況：漲跌平家數、漲停／跌停家數（±9.5% 近似）、成交金額與近 5 日均額倍數。
+    只有一個交易日（沒有前一日可比）時回傳 None。"""
+    days = sorted(history["date"].unique())
+    if len(days) < 2:
+        return None
+    h = history.sort_values(["code", "date"]).copy()
+    h["prev_close"] = h.groupby("code")["close"].shift(1)
+    h["amount"] = h["close"] * h["volume"]
+    today = h[h["date"] == days[-1]]
+    chg = (today["close"] / today["prev_close"] - 1) * 100
+    chg = chg[today["prev_close"].notna()]   # 新上市沒有前一日，不列入漲跌
+    amounts = h.groupby("date")["amount"].sum()
+    prev5 = amounts.reindex(days[-6:-1]).mean()
+    return {
+        "up": int((chg > 0).sum()),
+        "down": int((chg < 0).sum()),
+        "flat": int((chg == 0).sum()),
+        "limit_up": int((chg >= 9.5).sum()),
+        "limit_down": int((chg <= -9.5).sum()),
+        "amount": round(float(amounts[days[-1]])),
+        "amount_ratio": round(float(amounts[days[-1]] / prev5), 2) if prev5 else None,
     }
 
 
