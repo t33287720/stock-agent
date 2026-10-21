@@ -397,6 +397,17 @@ function instTable(code) {
     <tbody>${rows}</tbody></table>`;
 }
 
+// 近 N 日高低區間位置條：標出現價落在區間的哪裡與距高點跌幅；舊版 JSON 沒有 range 時不顯示
+function rangeBar(r) {
+  if (!r || typeof r.pos !== 'number') return '';
+  const short = r.days < 100 ? `（僅 ${r.days} 日資料）` : '';
+  const text = `位於區間 ${Math.round(r.pos)}%，距高點 ${r.from_high.toFixed(1)}%${short}`;
+  return `<div class="range" role="img" aria-label="近 ${r.days} 日高低區間，${text}">
+    <span class="range-track"><i class="range-dot" style="left:${Math.min(100, Math.max(0, r.pos))}%"></i></span>
+    <span class="range-ends muted"><span>低 ${r.low}</span><span>高 ${r.high}</span></span>
+    <span class="muted spark-legend">近 ${r.days} 日高低區間 · ${text}</span></div>`;
+}
+
 function stockDetail(s) {
   const cells = Object.keys(FIELDS).map(f =>
     `<div><span class="muted">${esc(FIELDS[f].label)}</span><span>${fmt(f, s[f])}</span></div>`).join('');
@@ -406,7 +417,7 @@ function stockDetail(s) {
   const ratio = typeof s.vol_ratio === 'number'
     ? `量比 <b class="${s.vol_ratio > 1.5 ? 'vol-hot' : ''}">${s.vol_ratio.toFixed(2)}</b> 倍` : '量比 —';
   const vlegend = vchart ? `<span class="muted spark-legend">近 20 日成交量（張）· 最右為今日 · ${ratio}</span>` : '';
-  return `<div class="detail">${chart}${legend}${vchart}${vlegend}${cells}${instTable(s.code)}
+  return `<div class="detail">${chart}${legend}${vchart}${vlegend}${rangeBar(s.range)}${cells}${instTable(s.code)}
     <a href="https://tw.stock.yahoo.com/quote/${encodeURIComponent(s.code)}" target="_blank" rel="noopener">在 Yahoo 股市看走勢圖 ↗</a></div>`;
 }
 

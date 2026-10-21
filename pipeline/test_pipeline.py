@@ -131,3 +131,13 @@ def test_institutional_5d_converts_to_lots_and_keeps_gaps():
     cache = {"2026-10-16": {"2330": [2000, -1000, 0]}, "2026-10-19": {"2330": [5000, 0, 1000]}}
     out = build.institutional_5d(cache, ["2026-10-16", "2026-10-17", "2026-10-19"])
     assert out == {"2330": [[2, -1, 0], None, [5, 0, 1]]}
+
+
+def test_range_position_basic_flat_and_short():
+    close = pd.Series([10.0, 12.0, 11.0, 9.0, 10.0])
+    r = indicators.range_position(close, close + 1, close - 1)
+    assert r["high"] == 13.0 and r["low"] == 8.0 and r["days"] == 5
+    assert r["pos"] == 40.0 and r["from_high"] == -23.1
+    flat = pd.Series([5.0] * 10)
+    assert indicators.range_position(flat, flat, flat)["pos"] == 50.0
+    assert indicators.range_position(pd.Series([5.0]), pd.Series([5.0]), pd.Series([5.0])) is None

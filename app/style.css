@@ -71,6 +71,10 @@ h2 { font-size: 16px; margin: 0 0 2px; }
 .spark polyline { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
 .spark line { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
 .spark-legend { grid-column: 1 / -1; font-size: 12px; }
+.range { grid-column: 1 / -1; }
+.range-track { display: block; position: relative; height: 6px; margin: 8px 0 4px; border-radius: 3px; background: var(--border); }
+.range-dot { position: absolute; top: -3px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--accent); }
+.range-ends { display: flex; justify-content: space-between; font-size: 12px; }
 .detail a { grid-column: 1 / -1; color: var(--accent); margin-top: 6px; }
 
 button {
