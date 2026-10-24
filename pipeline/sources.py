@@ -3,6 +3,7 @@
 每個函式一次拿到「某一天、整個市場」的資料，所以每天只需要打幾次 API。
 只保留一般股票（4 位數代號、不以 0 開頭），ETF、權證等不收。
 """
+import re
 import time
 from datetime import date
 
@@ -161,4 +162,60 @@ def tpex_institutional(day: date) -> dict[str, list[float]]:
         code = str(item.get("SecuritiesCompanyCode", "")).strip()
         if is_stock(code) and None not in vals:
             out[code] = vals
+    return out
+
+
+def roc_to_iso(text) -> str | None:
+    """民國日期 '115年10月28日'、'1151028'、'115/10/28' → '2026-10-28'；無法解析回傳 None。"""
+    digits = re.findall(r"\d+", str(text))
+    try:
+        if len(digits) >= 3:
+            y, m, d = (int(x) for x in digits[:3])
+        elif len(digits) == 1 and len(digits[0]) in (6, 7):
+            s = digits[0]
+            y, m, d = int(s[:-4]), int(s[-4:-2]), int(s[-2:])
+        else:
+            return None
+        return date(y + 1911 if y < 1911 else y, m, d).isoformat()
+    except ValueError:
+        return None
+
+
+def _exdiv_kind(text) -> str | None:
+    text = str(text)
+    if "權" in text and "息" in text:
+        return "權息"
+    return "息" if "息" in text else "權" if "權" in text else None
+
+
+def twse_exdiv() -> dict[str, dict]:
+    """上市除權息預告：{代號: {date, kind, amount}}；amount 為「權值+息值」（元／股）。沒資料或格式不符時回傳空 dict。"""
+    data = _get_json("https://www.twse.com.tw/rwd/zh/exRight/TWT48U?response=json")
+    fields = [f.strip() for f in data.get("fields", [])]
+    idx = [_find(fields, "資料日期"), _find(fields, "股票代號"), _find(fields, "權/息"), _find(fields, "權值")]
+    if None in idx[:3]:
+        return {}
+    out = {}
+    for r in data.get("data", []):
+        code, iso, kind = str(r[idx[1]]).strip(), roc_to_iso(r[idx[0]]), _exdiv_kind(r[idx[2]])
+        if is_stock(code) and iso and kind:
+            out[code] = {"date": iso, "kind": kind, "amount": _num(r[idx[3]]) if idx[3] is not None else None}
+    return out
+
+
+def tpex_exdiv() -> dict[str, dict]:
+    """上櫃除權息預告：以欄位名稱關鍵字比對，格式不符時回傳空 dict。"""
+    data = _get_json("https://www.tpex.org.tw/openapi/v1/tpex_exright_prepost")
+    out = {}
+    for item in data if isinstance(data, list) else []:
+        def key(*kw):
+            return next((k for k in item if all(w.lower() in k.lower() for w in kw)), None)
+        k_code, k_date = key("code"), key("date")
+        k_kind = next((k for k in item if _exdiv_kind(item[k])), None)
+        k_amt = key("dividend") or key("value")
+        if not (k_code and k_date and k_kind):
+            continue
+        code, iso, kind = str(item[k_code]).strip(), roc_to_iso(item[k_date]), _exdiv_kind(item[k_kind])
+        if is_stock(code) and iso and kind:
+            out[code] = {"date": iso, "kind": kind, "amount": _num(item.get(k_amt)) if k_amt else None}
     return out

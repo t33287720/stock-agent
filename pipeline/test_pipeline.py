@@ -141,3 +141,23 @@ def test_range_position_basic_flat_and_short():
     flat = pd.Series([5.0] * 10)
     assert indicators.range_position(flat, flat, flat)["pos"] == 50.0
     assert indicators.range_position(pd.Series([5.0]), pd.Series([5.0]), pd.Series([5.0])) is None
+
+
+def test_roc_to_iso_handles_common_formats():
+    assert sources.roc_to_iso("115年10月28日") == "2026-10-28"
+    assert sources.roc_to_iso("1151028") == "2026-10-28"
+    assert sources.roc_to_iso("115/10/28") == "2026-10-28"
+    assert sources.roc_to_iso("--") is None
+
+
+def test_twse_exdiv_parses_and_upcoming_filters(monkeypatch):
+    payload = {"fields": ["資料日期", "股票代號", "股票名稱", "權/息", "權值+息值"],
+               "data": [["115年10月28日", "2330", "台積電", "息", "4.5"],
+                        ["115年12月28日", "2317", "鴻海", "息", "1.0"],
+                        ["115年10月28日", "0050", "ETF", "息", "1.0"]]}
+    monkeypatch.setattr(sources, "_get_json", lambda url, tries=5: payload)
+    rows = sources.twse_exdiv()
+    assert rows == {"2330": {"date": "2026-10-28", "kind": "息", "amount": 4.5},
+                    "2317": {"date": "2026-12-28", "kind": "息", "amount": 1.0}}
+    import build
+    assert list(build.upcoming_exdiv(rows, date(2026, 10, 25))) == ["2330"]

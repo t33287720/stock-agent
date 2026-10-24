@@ -88,6 +88,7 @@ const PRESETS = [
 // ── 狀態 ──────────────────────────────────────────────────────────────────────
 let stocks = [];          // [{code, name, market, close, ...}]
 let market = null;   // 大盤概況（舊版 JSON 可能沒有）
+let exdiv = {}; // 即將除權息 {代號: {date, kind, amount}}（舊版 JSON 可能沒有）
 let inst = {}, instDates = []; // 三大法人近 5 日買賣超（張）{代號: [[外資,投信,自營商]|null, ...]}（舊版 JSON 可能沒有）
 let dataDate = '';        // 資料日期（YYYY-MM-DD）
 let rules = loadRules();
@@ -342,7 +343,7 @@ function stockRow(s, highlightField, isNew = false) {
     <li class="stock" data-code="${esc(s.code)}" tabindex="0" aria-expanded="false">
       <div class="stock-main">
         ${starButton(s)}
-        <div class="stock-name"><b>${esc(s.name)}</b> <span class="muted">${esc(s.code)} · ${esc(s.market)}</span>${isNew ? ' <span class="badge-new" aria-label="新進榜">新進榜</span>' : ''}</div>
+        <div class="stock-name"><b>${esc(s.name)}</b> <span class="muted">${esc(s.code)} · ${esc(s.market)}</span>${exdivTag(s.code)}${isNew ? ' <span class="badge-new" aria-label="新進榜">新進榜</span>' : ''}</div>
         <div class="price">
           <span>${s.close}</span>
           <span class="${trendClass(s.change_pct)}">${s.change_pct > 0 ? '+' : ''}${fmt('change_pct', s.change_pct)}</span>
@@ -382,6 +383,20 @@ function volumeBars(vols) {
     return `<rect class="${i === v.length - 1 ? 'today' : ''}" x="${(i * (bw + G)).toFixed(1)}" y="${(H - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}"/>`;
   }).join('');
   return `<svg class="volbars" viewBox="0 0 ${W} ${H}" role="img" aria-label="近 ${v.length} 日成交量，今日 ${v[v.length - 1]} 張">${bars}</svg>`;
+}
+
+// 即將除權息標籤：「6/18 除息 2.5 元」；7 天內加醒目樣式
+function exdivInfo(code) {
+  const e = exdiv[code];
+  if (!e || !e.date) return null;
+  const days = Math.round((new Date(e.date) - new Date(dataDate)) / 86400000);
+  const label = `${Number(e.date.slice(5, 7))}/${Number(e.date.slice(8))} 除${e.kind}`
+    + (e.kind === '息' && typeof e.amount === 'number' ? ` ${e.amount} 元` : '');
+  return { label, soon: days >= 0 && days <= 7 };
+}
+function exdivTag(code) {
+  const x = exdivInfo(code);
+  return x ? ` <span class="exdiv${x.soon ? ' soon' : ''}">${esc(x.label)}</span>` : '';
 }
 
 // 三大法人近 N 日買賣超小表（張）：買超紅、賣超綠（台股配色，沿用 trendClass）；缺資料的日子顯示「—」
@@ -528,6 +543,7 @@ function watchSummary() {
     return `<li class="watch-sum-row">
       <span><b>${esc(s.name)}</b> <span class="muted small">${esc(s.code)}</span></span>
       <span class="${trendClass(s.change_pct)}">${chg}</span>
+      ${exdivInfo(s.code)?.soon ? exdivTag(s.code) : ''}
       ${pnl ? `<span class="small ${trendClass(pnl.pct)} watch-hit">損益 ${pnlText(pnl)}</span>` : ''}
       ${hit ? `<span class="small muted watch-hit">命中：${hit.map(esc).join('、')}</span>` : ''}</li>`;
   };
@@ -790,6 +806,7 @@ async function init() {
     const offline = resp.headers.get('x-sw-cache') === '1';
     market = data.market ?? null;
     dataDate = data.date;
+    exdiv = data.exdiv ?? {};
     inst = data.inst ?? {};
     instDates = data.inst_dates ?? [];
     stocks = data.rows.map(r => Object.fromEntries(data.columns.map((c, i) => [c, r[i]])));

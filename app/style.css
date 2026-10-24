@@ -156,3 +156,6 @@ button.star[aria-pressed="true"] { color: #f59e0b; }
 .inst th { font-weight: normal; color: var(--muted); text-align: right; padding: 2px 4px; }
 .inst tbody th { text-align: left; }
 .inst td { padding: 2px 4px; font-variant-numeric: tabular-nums; }
+
+.exdiv { font-size: .75rem; padding: 1px 6px; border-radius: 8px; background: rgba(128,128,128,.15); color: var(--muted, #888); white-space: nowrap; }
+.exdiv.soon { background: #ffe9b5; color: #7a4b00; font-weight: 600; }

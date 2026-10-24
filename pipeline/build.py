@@ -115,6 +115,26 @@ def institutional_5d(cache: dict, days: list[str]) -> dict[str, list[list[int]]]
     return {code: [by_day.get(d) for d in days] for code, by_day in out.items()}
 
 
+EXDIV_DAYS = 30          # 只收未來幾天內的除權息預告
+
+
+def upcoming_exdiv(rows: dict[str, dict], today: date, days: int = EXDIV_DAYS) -> dict[str, dict]:
+    """只留下 today（含）到 days 天內除權息的股票。"""
+    last = (today + timedelta(days=days)).isoformat()
+    return {c: v for c, v in rows.items() if today.isoformat() <= v["date"] <= last}
+
+
+def fetch_exdiv(today: date) -> dict[str, dict]:
+    """抓上市＋上櫃除權息預告；任一邊失敗只略過那一邊，不讓整個 pipeline 失敗。"""
+    rows = {}
+    for name, fn in (("上市", sources.twse_exdiv), ("上櫃", sources.tpex_exdiv)):
+        try:
+            rows.update(fn())
+        except Exception as e:
+            print(f"  {name}除權息預告略過：{e}")
+    return upcoming_exdiv(rows, today)
+
+
 def main():
     data_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -138,6 +158,8 @@ def main():
     inst_days = sorted(history["date"].unique())[-INST_DAYS:]
     inst = institutional_5d(update_institutional(data_dir / "inst-history.json", inst_days), inst_days)
 
+    exdiv = fetch_exdiv(today)
+
     columns = list(snapshot.columns)
     rows = snapshot.astype(object).where(snapshot.notna(), None).values.tolist()
     rows = [[round(v, 2) if isinstance(v, float) else v for v in r] for r in rows]
@@ -147,6 +169,7 @@ def main():
         "trading_days": int(history["date"].nunique()),
         "has_valuation": has_valuation,
         "market": market_summary(history),
+        "exdiv": exdiv,
         "inst_dates": inst_days if inst else [],
         "inst": inst,
         "columns": columns,
