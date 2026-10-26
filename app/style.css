@@ -159,3 +159,7 @@ button.star[aria-pressed="true"] { color: #f59e0b; }
 
 .exdiv { font-size: .75rem; padding: 1px 6px; border-radius: 8px; background: rgba(128,128,128,.15); color: var(--muted, #888); white-space: nowrap; }
 .exdiv.soon { background: #ffe9b5; color: #7a4b00; font-weight: 600; }
+
+.target-tag { font-size: 12px; padding: 1px 6px; border-radius: 8px; font-weight: 600; }
+.target-tag.hit { color: var(--up); background: color-mix(in srgb, var(--up) 14%, transparent); }
+.target-tag.stop { color: var(--down); background: color-mix(in srgb, var(--down) 14%, transparent); }
