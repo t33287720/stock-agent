@@ -87,6 +87,7 @@ const PRESETS = [
 
 // ── 狀態 ──────────────────────────────────────────────────────────────────────
 let stocks = [];          // [{code, name, market, close, ...}]
+let stockByCode = new Map();  // 代號 → stock，載入資料時建立
 let market = null;   // 大盤概況（舊版 JSON 可能沒有）
 let exdiv = {}; // 即將除權息 {代號: {date, kind, amount}}（舊版 JSON 可能沒有）
 let inst = {}, instDates = []; // 三大法人近 5 日買賣超（張）{代號: [[外資,投信,自營商]|null, ...]}（舊版 JSON 可能沒有）
@@ -480,7 +481,7 @@ function toggleDetail(li) {
     li.setAttribute('aria-expanded', 'false');
     return;
   }
-  const s = stocks.find(x => x.code === li.dataset.code);
+  const s = stockByCode.get(li.dataset.code);
   li.insertAdjacentHTML('beforeend', stockDetail(s));
   li.setAttribute('aria-expanded', 'true');
 }
@@ -506,7 +507,7 @@ function toggleWatch(code) {
   if (i >= 0 && holdings[code]) { delete holdings[code]; saveHoldings(); }
   if (i >= 0 && targets[code]) { delete targets[code]; saveTargets(); }
   const on = i < 0;
-  const name = stocks.find(x => x.code === code)?.name ?? code;
+  const name = stockByCode.get(code)?.name ?? code;
   document.querySelectorAll('button.star').forEach(b => {
     if (b.dataset.code !== code) return;
     b.setAttribute('aria-pressed', on);
@@ -561,8 +562,7 @@ const WATCH_SUMMARY_LIMIT = 10;
 let watchSummaryOpen = true, watchSummaryAll = false;
 
 function watchSummary() {
-  const byCode = new Map(stocks.map(s => [s.code, s]));
-  const items = watchlist.map(code => byCode.get(code)).filter(Boolean)
+  const items = watchlist.map(code => stockByCode.get(code)).filter(Boolean)
     .sort((a, b) => (!!targetStatus(b) - !!targetStatus(a)) || (b.change_pct ?? -Infinity) - (a.change_pct ?? -Infinity));
   if (!items.length) return '';   // 沒有自選股（或都已無資料）就不顯示
   const watched = new Set(watchlist);
@@ -620,7 +620,7 @@ function renderWatch() {
     return;
   }
   const rows = watchlist.map(code => {
-    const s = stocks.find(x => x.code === code);
+    const s = stockByCode.get(code);
     return s ? stockRow(s) + holdingForm(s) : `
       <li class="stock gone">
         <div class="stock-main">
@@ -636,7 +636,7 @@ function renderWatch() {
 function portfolioTotal() {
   let cost = 0, amount = 0;
   for (const code of watchlist) {
-    const s = stocks.find(x => x.code === code);
+    const s = stockByCode.get(code);
     const p = s && holdingPnl(s, holdings[code]);
     if (p && p.amount != null) { cost += p.cost; amount += p.amount; }
   }
@@ -855,6 +855,7 @@ async function init() {
     inst = data.inst ?? {};
     instDates = data.inst_dates ?? [];
     stocks = data.rows.map(r => Object.fromEntries(data.columns.map((c, i) => [c, r[i]])));
+    stockByCode = new Map(stocks.map(s => [s.code, s]));
     document.getElementById('data-date').textContent =
       `${offline ? `離線資料（${data.date}）` : `${data.date} 收盤資料`} · ${stocks.length} 支${data.has_valuation ? '' : ' · 本益比等估值尚未公布'}`;
   } catch {
