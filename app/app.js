@@ -470,7 +470,81 @@ function stockDetail(s) {
     ? `量比 <b class="${s.vol_ratio > 1.5 ? 'vol-hot' : ''}">${s.vol_ratio.toFixed(2)}</b> 倍` : '量比 —';
   const vlegend = vchart ? `<span class="muted spark-legend">近 20 日成交量（張）· 最右為今日 · ${ratio}</span>` : '';
   return `<div class="detail">${chart}${legend}${vchart}${vlegend}${rangeBar(s.range)}${cells}${instTable(s.code)}
+    <button type="button" class="ghost cmp-btn" data-code="${esc(s.code)}" aria-pressed="${compareList.includes(s.code)}">${compareList.includes(s.code) ? '移出比較' : '加入比較'}</button>
     <a href="https://tw.stock.yahoo.com/quote/${encodeURIComponent(s.code)}" target="_blank" rel="noopener">在 Yahoo 股市看走勢圖 ↗</a></div>`;
+}
+
+// ── 並排比較（最多 3 檔，只存在記憶體）────────────────────────────────────────
+const COMPARE_MAX = 3;
+let compareList = [];
+// 各指標「較佳」的方向：high 越高越好、low 越低越好（本益比／淨值比僅比較正值）；只依數值大小，不構成建議
+const COMPARE_BEST = { change_pct: 'high', ret_5d: 'high', ret_20d: 'high', yield: 'high', pe: 'low', pb: 'low' };
+const COMPARE_FIELDS = ['close', 'change_pct', 'ret_5d', 'ret_20d', 'pe', 'pb', 'yield', 'vol_ratio', 'rsi', 'k', 'd', 'from_high_60', 'above_ma20', 'above_ma60'];
+
+// 回傳 [{field, cells:[{text, best}]}]；純函式，方便測試
+function buildCompareRows(list) {
+  return COMPARE_FIELDS.map(field => {
+    const vals = list.map(s => s[field]);
+    const dir = COMPARE_BEST[field];
+    const nums = vals.filter(v => typeof v === 'number' && (field !== 'pe' && field !== 'pb' || v > 0));
+    const target = !dir || list.length < 2 || nums.length === 0 ? null
+      : dir === 'high' ? Math.max(...nums) : Math.min(...nums);
+    const cells = vals.map(v => ({
+      text: fmt(field, v),
+      best: target !== null && typeof v === 'number' && v === target && nums.length > 1 && new Set(nums).size > 1,
+      cls: FIELDS[field].bool ? '' : trendClass(field.includes('pct') || field.startsWith('ret') || field.startsWith('from') ? v : 0),
+    }));
+    return { field, cells };
+  });
+}
+
+function renderCompareBar() {
+  let bar = document.getElementById('compare-bar');
+  if (!compareList.length) { bar?.remove(); return; }
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'compare-bar';
+    bar.className = 'compare-bar';
+    document.body.appendChild(bar);
+  }
+  bar.innerHTML = `<span>已選 ${compareList.length}/${COMPARE_MAX} 檔</span>
+    <button type="button" class="ghost" data-act="clear">清空</button>
+    <button type="button" data-act="open"${compareList.length < 2 ? ' disabled' : ''}>開始比較</button>`;
+}
+
+function openCompare() {
+  const list = compareList.map(c => stockByCode.get(c)).filter(Boolean);
+  if (list.length < 2) return;
+  let dlg = document.getElementById('compare');
+  if (!dlg) {
+    dlg = document.createElement('dialog');
+    dlg.id = 'compare';
+    dlg.setAttribute('aria-label', '個股並排比較');
+    document.body.appendChild(dlg);
+  }
+  const rows = buildCompareRows(list).map(r =>
+    `<tr><th scope="row">${esc(FIELDS[r.field].label)}</th>${r.cells.map(c =>
+      `<td class="${c.cls}${c.best ? ' cmp-best' : ''}">${esc(c.text)}${c.best ? ' ★' : ''}</td>`).join('')}</tr>`).join('');
+  dlg.innerHTML = `<h2>個股比較</h2><div class="cmp-scroll"><table class="cmp">
+    <thead><tr><th></th>${list.map(s => `<th scope="col">${esc(s.name)}<br><span class="muted">${esc(s.code)}</span></th>`).join('')}</tr></thead>
+    <tbody>${rows}</tbody></table></div>
+    <p class="muted small">★ 僅依數值大小標示（如殖利率較高、本益比較低），不構成買賣建議。</p>
+    <button type="button" class="ghost" data-act="close">關閉</button>`;
+  dlg.showModal();
+}
+
+function toggleCompare(code) {
+  const i = compareList.indexOf(code);
+  if (i >= 0) compareList.splice(i, 1);
+  else if (compareList.length >= COMPARE_MAX) { alert(`最多同時比較 ${COMPARE_MAX} 檔`); return; }
+  else compareList.push(code);
+  const on = i < 0;
+  document.querySelectorAll('button.cmp-btn').forEach(b => {
+    if (b.dataset.code !== code) return;
+    b.setAttribute('aria-pressed', on);
+    b.textContent = on ? '移出比較' : '加入比較';
+  });
+  renderCompareBar();
 }
 
 // 點股票展開 / 收合詳細數字
@@ -488,6 +562,18 @@ function toggleDetail(li) {
 document.addEventListener('click', e => {
   const star = e.target.closest('button.star');
   if (star) { toggleWatch(star.dataset.code); return; }
+  const cmp = e.target.closest('button.cmp-btn');
+  if (cmp) { toggleCompare(cmp.dataset.code); return; }
+  const act = e.target.closest('#compare-bar button, #compare button');
+  if (act) {
+    if (act.dataset.act === 'open') openCompare();
+    else if (act.dataset.act === 'clear') {
+      compareList = [];
+      document.querySelectorAll('button.cmp-btn').forEach(b => { b.setAttribute('aria-pressed', false); b.textContent = '加入比較'; });
+      renderCompareBar();
+    } else if (act.dataset.act === 'close') document.getElementById('compare').close();
+    return;
+  }
   const li = e.target.closest('li.stock');
   if (li && li.dataset.code && !e.target.closest('a, button')) toggleDetail(li);
 });

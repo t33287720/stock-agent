@@ -163,3 +163,15 @@ button.star[aria-pressed="true"] { color: #f59e0b; }
 .target-tag { font-size: 12px; padding: 1px 6px; border-radius: 8px; font-weight: 600; }
 .target-tag.hit { color: var(--up); background: color-mix(in srgb, var(--up) 14%, transparent); }
 .target-tag.stop { color: var(--down); background: color-mix(in srgb, var(--down) 14%, transparent); }
+
+/* 並排比較 */
+.cmp-btn { justify-self: start; }
+.compare-bar { position: fixed; left: 0; right: 0; bottom: calc(56px + env(safe-area-inset-bottom)); z-index: 20; display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: var(--card); border-top: 1px solid var(--border); box-shadow: 0 -2px 8px rgba(0,0,0,.12); }
+.compare-bar span { flex: 1; }
+#compare { width: min(96vw, 560px); max-height: 90vh; background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 12px; }
+.cmp-scroll { overflow-x: auto; }
+.cmp { width: 100%; border-collapse: collapse; font-size: 14px; text-align: right; font-variant-numeric: tabular-nums; }
+.cmp th, .cmp td { padding: 5px 6px; border-top: 1px solid var(--border); font-weight: normal; }
+.cmp thead th { border-top: 0; font-weight: 600; }
+.cmp tbody th { text-align: left; color: var(--muted); white-space: nowrap; position: sticky; left: 0; background: var(--card); }
+.cmp-best { font-weight: 700; background: var(--highlight-bg); color: var(--highlight-text); }
